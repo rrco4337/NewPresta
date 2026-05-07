@@ -1,0 +1,329 @@
+{
+  "info": {
+    "name": "Product API CRUD — PrestaShop",
+    "description": "Collection complète : CRUD produit + recherche multi-critères",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {"key": "username", "value": "{{wsKey}}", "type": "string"},
+      {"key": "password", "value": "", "type": "string"}
+    ]
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://127.0.0.1:8080"},
+    {"key": "adminDir", "value": "admin97512pee6coofvkvbtu"},
+    {"key": "wsKey", "value": "7Q4NKLRMB4FFXGEWRITAZ8EDZDP2RSKG"}
+  ],
+  "item": [
+
+    {
+      "name": "📦 CRUD DE BASE",
+      "item": [
+
+        {
+          "name": "List products (tous)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"]
+            }
+          }
+        },
+
+        {
+          "name": "Get product (par ID)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productdetail?id_product=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productdetail"],
+              "query": [
+                {"key": "id_product", "value": "1"}
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Create product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"T-shirt blanc\",\n  \"price\": 29.99,\n  \"wholesale_price\": 10.00,\n  \"reference\": \"TSH-001\",\n  \"description\": \"Un t-shirt blanc classique.\",\n  \"description_short\": \"T-shirt 100% coton.\",\n  \"condition\": \"new\",\n  \"active\": 1,\n  \"weight\": 0.3,\n  \"quantity\": 50,\n  \"id_category\": 2\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productcreate",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productcreate"]
+            }
+          }
+        },
+
+        {
+          "name": "Update product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_product\": 1,\n  \"name\": \"T-shirt blanc modifié\",\n  \"price\": 34.99,\n  \"active\": 1,\n  \"quantity\": 80\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productupdate",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productupdate"]
+            }
+          }
+        },
+
+        {
+          "name": "Delete product",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id_product\": 1\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productdelete",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productdelete"]
+            }
+          }
+        }
+
+      ]
+    },
+
+    {
+      "name": "🔍 RECHERCHE MULTI-CRITÈRES",
+      "item": [
+
+        {
+          "name": "Filtrer par PRIX (entre deux valeurs)",
+          "request": {
+            "method": "GET",
+            "description": "Retourne tous les produits dont le prix est entre 10 et 50.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?price_min=10&price_max=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "price_min", "value": "10",  "description": "Prix minimum (inclus)" },
+                { "key": "price_max", "value": "50",  "description": "Prix maximum (inclus)" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer par DATE DE CRÉATION (entre deux dates)",
+          "request": {
+            "method": "GET",
+            "description": "Retourne les produits créés entre le 01/01/2024 et le 31/12/2024.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?date_from=2024-01-01&date_to=2024-12-31",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "date_from", "value": "2024-01-01", "description": "Date début — format YYYY-MM-DD" },
+                { "key": "date_to",   "value": "2024-12-31", "description": "Date fin   — format YYYY-MM-DD" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer par DATE DE MODIFICATION (entre deux dates)",
+          "request": {
+            "method": "GET",
+            "description": "Produits mis à jour sur une période donnée.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?updated_from=2024-06-01&updated_to=2024-06-30",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "updated_from", "value": "2024-06-01", "description": "Modifié à partir de" },
+                { "key": "updated_to",   "value": "2024-06-30", "description": "Modifié jusqu'à" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer par NOM (recherche partielle)",
+          "request": {
+            "method": "GET",
+            "description": "Cherche tous les produits dont le nom contient 'shirt'.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?name=shirt",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "name", "value": "shirt", "description": "Recherche LIKE %shirt%" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer par RÉFÉRENCE (exacte)",
+          "request": {
+            "method": "GET",
+            "description": "Cherche un produit par sa référence exacte.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?reference=TSH-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "reference", "value": "TSH-001", "description": "Référence exacte du produit" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer par CATÉGORIE",
+          "request": {
+            "method": "GET",
+            "description": "Retourne les produits appartenant à la catégorie ID=3.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?id_category=3",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "id_category", "value": "3", "description": "ID de la catégorie PrestaShop" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer par CONDITION (new / used / refurbished)",
+          "request": {
+            "method": "GET",
+            "description": "Retourne uniquement les produits neufs.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?condition=new",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "condition", "value": "new", "description": "Valeurs possibles : new | used | refurbished" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer par STATUT (actif / inactif)",
+          "request": {
+            "method": "GET",
+            "description": "Retourne uniquement les produits actifs (visible en boutique).",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?active=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "active", "value": "1", "description": "1 = actif, 0 = inactif" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "Filtrer EN STOCK seulement",
+          "request": {
+            "method": "GET",
+            "description": "Retourne uniquement les produits avec stock > 0.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?in_stock=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "in_stock", "value": "1", "description": "1 = seulement les produits en stock" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "TRI par prix croissant",
+          "request": {
+            "method": "GET",
+            "description": "Liste triée du moins cher au plus cher.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?sort_by=price&sort_order=ASC",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "sort_by",    "value": "price", "description": "Colonnes : id_product | name | price | date_add | date_upd | quantity" },
+                { "key": "sort_order", "value": "ASC",   "description": "ASC ou DESC" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "PAGINATION — page 2, 10 résultats",
+          "request": {
+            "method": "GET",
+            "description": "Récupère la deuxième page avec 10 produits par page.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?page=2&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "page",  "value": "2",  "description": "Numéro de page (commence à 1)" },
+                { "key": "limit", "value": "10", "description": "Nombre de résultats par page (max 100)" }
+              ]
+            }
+          }
+        },
+
+        {
+          "name": "🔥 COMBINAISON TOTALE (tous les filtres ensemble)",
+          "request": {
+            "method": "GET",
+            "description": "Produits actifs, neufs, en stock, prix entre 5 et 100, créés en 2024, dans la catégorie 5, dont le nom contient 'shirt' — triés par date décroissant, page 1.",
+            "url": {
+              "raw": "{{baseUrl}}/module/product_api/productlist?active=1&condition=new&in_stock=1&price_min=5&price_max=100&date_from=2024-01-01&date_to=2024-12-31&id_category=5&name=shirt&sort_by=date_add&sort_order=DESC&page=1&limit=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["module", "product_api", "productlist"],
+              "query": [
+                { "key": "active",      "value": "1",          "description": "Produits actifs seulement" },
+                { "key": "condition",   "value": "new",        "description": "Produits neufs" },
+                { "key": "in_stock",    "value": "1",          "description": "En stock seulement" },
+                { "key": "price_min",   "value": "5",          "description": "Prix >= 5" },
+                { "key": "price_max",   "value": "100",        "description": "Prix <= 100" },
+                { "key": "date_from",   "value": "2024-01-01", "description": "Créé à partir du 01/01/2024" },
+                { "key": "date_to",     "value": "2024-12-31", "description": "Créé jusqu'au 31/12/2024" },
+                { "key": "id_category", "value": "5",          "description": "Dans la catégorie 5" },
+                { "key": "name",        "value": "shirt",      "description": "Nom contient 'shirt'" },
+                { "key": "sort_by",     "value": "date_add",   "description": "Trier par date de création" },
+                { "key": "sort_order",  "value": "DESC",       "description": "Du plus récent au plus ancien" },
+                { "key": "page",        "value": "1",          "description": "Page 1" },
+                { "key": "limit",       "value": "10",         "description": "10 résultats par page" }
+              ]
+            }
+          }
+        }
+
+      ]
+    }
+
+  ]
+}

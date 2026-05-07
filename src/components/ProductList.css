@@ -99,6 +99,107 @@
   color: #999;
 }
 
+/* ================ FILTERS TOGGLE ================ */
+.filters-toggle {
+  padding: 10px 18px;
+  background-color: #f0f0f0;
+  color: #2c3e50;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  margin-bottom: 20px;
+  transition: all 0.3s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filters-toggle:hover {
+  background-color: #e8e8e8;
+  border-color: #667eea;
+  color: #667eea;
+}
+
+/* ================ FILTERS PANEL ================ */
+.filters-panel {
+  background: white;
+  border: 2px solid #667eea;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.filter-group label {
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+}
+
+.filter-group input,
+.filter-group select {
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  background-color: #fafafa;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+  outline: none;
+  border-color: #667eea;
+  background-color: white;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.reset-filters-btn {
+  padding: 10px 18px;
+  background-color: #f8f9fa;
+  color: #2c3e50;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.reset-filters-btn:hover {
+  background-color: #e8ecf1;
+  border-color: #667eea;
+  color: #667eea;
+}
+
 /* ================ STATS ================ */
 .stats {
   padding: 12px 16px;

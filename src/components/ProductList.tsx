@@ -1,16 +1,33 @@
-
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productService } from '../services/produitApi';
 import type { Product } from '../services/produitApi';
 import './ProductList.css';
 
+interface Filters {
+  name: string;
+  priceMin: number | '';
+  priceMax: number | '';
+  statusFilter: 'all' | 'active' | 'inactive';
+  stockFilter: 'all' | 'inStock' | 'outOfStock';
+  sortBy: 'name' | 'price' | 'reference';
+  sortOrder: 'asc' | 'desc';
+}
+
 const ProductList: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<Filters>({
+    name: '',
+    priceMin: '',
+    priceMax: '',
+    statusFilter: 'all',
+    stockFilter: 'all',
+    sortBy: 'name',
+    sortOrder: 'asc'
+  });
 
   const navigate = useNavigate();
 
@@ -39,7 +56,7 @@ const ProductList: React.FC = () => {
     if (window.confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) {
       try {
         await productService.deleteProduct(productId);
-        loadProducts(); // Recharger la liste des produits
+        loadProducts();
       } catch (error) {
         setError("Erreur lors de la suppression du produit.");
         console.error(error);
@@ -54,9 +71,83 @@ const ProductList: React.FC = () => {
     }).format(product.price);
   };
 
-  const filteredProducts = products.filter((product) =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const applyFilters = (productsToFilter: Product[]): Product[] => {
+    let filtered = productsToFilter;
+
+    // Filtrer par nom
+    if (filters.name) {
+      filtered = filtered.filter((product) =>
+        product.name.toLowerCase().includes(filters.name.toLowerCase()) ||
+        product.reference.toLowerCase().includes(filters.name.toLowerCase())
+      );
+    }
+
+    // Filtrer par prix
+    if (filters.priceMin !== '') {
+      filtered = filtered.filter((product) => product.price >= filters.priceMin);
+    }
+    if (filters.priceMax !== '') {
+      filtered = filtered.filter((product) => product.price <= filters.priceMax);
+    }
+
+    // Filtrer par statut
+    if (filters.statusFilter === 'active') {
+      filtered = filtered.filter((product) => product.active);
+    } else if (filters.statusFilter === 'inactive') {
+      filtered = filtered.filter((product) => !product.active);
+    }
+
+    // Filtrer par stock
+    if (filters.stockFilter === 'inStock') {
+      filtered = filtered.filter((product) => product.quantity > 0);
+    } else if (filters.stockFilter === 'outOfStock') {
+      filtered = filtered.filter((product) => product.quantity === 0);
+    }
+
+    // Appliquer le tri
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (filters.sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'price':
+          comparison = a.price - b.price;
+          break;
+        case 'reference':
+          comparison = a.reference.localeCompare(b.reference);
+          break;
+        default:
+          comparison = 0;
+      }
+
+      return filters.sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return filtered;
+  };
+
+  const filteredProducts = applyFilters(products);
+
+  const handleFilterChange = (key: keyof Filters, value: any) => {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value
+    }));
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      name: '',
+      priceMin: '',
+      priceMax: '',
+      statusFilter: 'all',
+      stockFilter: 'all',
+      sortBy: 'name',
+      sortOrder: 'asc'
+    });
+  };
 
   const handleAddProduct = () => {
     navigate('/products/add');
@@ -102,17 +193,122 @@ const ProductList: React.FC = () => {
         <input
           type="text"
           placeholder="Rechercher un produit..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          value={filters.name}
+          onChange={(e) => handleFilterChange('name', e.target.value)}
           className="search-input"
         />
         <span className="search-icon">🔍</span>
       </div>
 
+      {/* Bouton pour afficher/masquer les filtres */}
+      <button
+        onClick={() => setShowFilters(!showFilters)}
+        className="filters-toggle"
+      >
+        {showFilters ? '▼' : '▶'} 🔧 Filtres avancés
+      </button>
+
+      {/* Panneau de filtres */}
+      {showFilters && (
+        <div className="filters-panel">
+          <div className="filters-grid">
+            {/* Filtres de prix */}
+            <div className="filter-group">
+              <label htmlFor="priceMin">Prix minimum (€)</label>
+              <input
+                id="priceMin"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Min"
+                value={filters.priceMin}
+                onChange={(e) => handleFilterChange('priceMin', e.target.value ? parseFloat(e.target.value) : '')}
+              />
+            </div>
+
+            <div className="filter-group">
+              <label htmlFor="priceMax">Prix maximum (€)</label>
+              <input
+                id="priceMax"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Max"
+                value={filters.priceMax}
+                onChange={(e) => handleFilterChange('priceMax', e.target.value ? parseFloat(e.target.value) : '')}
+              />
+            </div>
+
+            {/* Filtre de statut */}
+            <div className="filter-group">
+              <label htmlFor="statusFilter">Statut</label>
+              <select
+                id="statusFilter"
+                value={filters.statusFilter}
+                onChange={(e) => handleFilterChange('statusFilter', e.target.value)}
+              >
+                <option value="all">Tous les statuts</option>
+                <option value="active">✓ Actifs</option>
+                <option value="inactive">✗ Inactifs</option>
+              </select>
+            </div>
+
+            {/* Filtre de stock */}
+            <div className="filter-group">
+              <label htmlFor="stockFilter">Stock</label>
+              <select
+                id="stockFilter"
+                value={filters.stockFilter}
+                onChange={(e) => handleFilterChange('stockFilter', e.target.value)}
+              >
+                <option value="all">Tous</option>
+                <option value="inStock">📦 En stock</option>
+                <option value="outOfStock">❌ Rupture</option>
+              </select>
+            </div>
+
+            {/* Tri */}
+            <div className="filter-group">
+              <label htmlFor="sortBy">Trier par</label>
+              <select
+                id="sortBy"
+                value={filters.sortBy}
+                onChange={(e) => handleFilterChange('sortBy', e.target.value)}
+              >
+                <option value="name">Nom</option>
+                <option value="price">Prix</option>
+                <option value="reference">Référence</option>
+              </select>
+            </div>
+
+            {/* Ordre de tri */}
+            <div className="filter-group">
+              <label htmlFor="sortOrder">Ordre</label>
+              <select
+                id="sortOrder"
+                value={filters.sortOrder}
+                onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
+              >
+                <option value="asc">Croissant ↑</option>
+                <option value="desc">Décroissant ↓</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Bouton pour réinitialiser les filtres */}
+          <button onClick={resetFilters} className="reset-filters-btn">
+            🔄 Réinitialiser les filtres
+          </button>
+        </div>
+      )}
+
       <div className="stats">
         <p>
           {filteredProducts.length} produit(s) trouvé(s)
-          {searchTerm && ` pour "${searchTerm}"`}
+          {filters.name && ` pour "${filters.name}"`}
+          {(filters.priceMin !== '' || filters.priceMax !== '') && ` • Prix: ${filters.priceMin || '0'}€ - ${filters.priceMax || '∞'}€`}
+          {filters.statusFilter !== 'all' && ` • ${filters.statusFilter === 'active' ? 'Actifs' : 'Inactifs'}`}
+          {filters.stockFilter !== 'all' && ` • ${filters.stockFilter === 'inStock' ? 'En stock' : 'Rupture'}`}
         </p>
       </div>
 

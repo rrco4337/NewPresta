@@ -28,6 +28,31 @@
   flex-wrap: wrap;
 }
 
+.header-user {
+  display: flex;
+  align-items: center;
+  font-size: 0.875rem;
+  color: #6b7280;
+  padding: 0 4px;
+}
+
+.logout-button {
+  padding: 12px 20px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: #fff;
+  color: #dc2626;
+  transition: all 0.2s ease;
+}
+
+.logout-button:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
 .add-button,
 .refresh-button {
   padding: 12px 20px;

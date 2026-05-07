@@ -24,7 +24,7 @@ export interface Product {
 // 2. CONFIGURATION AXIOS
 // ==========================================
 const api: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
   headers: {
     'Content-Type': 'application/xml',
     'Accept': 'application/xml'

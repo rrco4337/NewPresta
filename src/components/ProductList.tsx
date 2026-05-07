@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productService } from '../services/produitApi';
 import type { Product } from '../services/produitApi';
+import { useAuth } from '../contexts/AuthContext';
 import './ProductList.css';
 
 interface Filters {
@@ -30,6 +31,12 @@ const ProductList: React.FC = () => {
   });
 
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
 
   useEffect(() => {
     loadProducts();
@@ -179,12 +186,18 @@ const ProductList: React.FC = () => {
         <h1>Liste des Produits ({filteredProducts.length})</h1>
 
         <div className="header-actions">
+          <span className="header-user">{user?.email}</span>
+
           <button onClick={loadProducts} className="refresh-button">
             🔄 Actualiser
           </button>
 
           <button onClick={handleAddProduct} className="add-button">
             ➕ Ajouter un produit
+          </button>
+
+          <button onClick={handleLogout} className="logout-button">
+            Déconnexion
           </button>
         </div>
       </div>

@@ -1,0 +1,822 @@
+{
+  "info": {
+    "name": "PrestaShop 8.2.6 - prestcho2",
+    "description": "Collection Postman complète pour le projet PrestaShop 8.2.6 (prestcho).\n\n## Structure du projet\n- **Plate-forme** : PrestaShop 8.2.6 (PHP)\n- **Dossier admin** : admin97512pee6coofvkvbtu\n- **URL de base** : http://127.0.0.1:8080\n\n## Catégories d'endpoints\n0. **Authentication** - Login customer (front), login admin (BO), reset password, OAuth2 token\n1. **Webservice REST API** (`/api/{resource}`) - API REST principale (Basic Auth via clé Webservice)\n2. **Symfony Admin API** (`/api/...` côté admin) - OAuth2, stocks, fournisseurs, etc.\n3. **Front Office** - Pages publiques (`index.php?controller=...`)\n4. **Front AJAX** - Endpoints AJAX (cart, product, etc.)\n5. **Modules Front** - Endpoints exposés par les modules\n6. **Admin Back Office** - Routes admin legacy\n\n## 4 systèmes d'authentification distincts\n| Système | Table DB | Cookie | Différenciateur |\n|---|---|---|---|\n| **Customer** (Front) | `ps_customer` | `id_customer` | `id_default_group` (1=Visitor, 2=Guest, 3=Customer) |\n| **Employee** (BO) | `ps_employee` | `id_employee` + `profile` | `id_profile` (1=SuperAdmin) + `ps_access` |\n| **Webservice key** | `ps_webservice_account` | aucun (stateless) | permissions CRUD par ressource sur la clé |\n| **OAuth2 client** | `api_client` | aucun (Bearer token) | scopes attachés au client |\n\nUn customer NE peut PAS se connecter au BO (tables, cookies, sessions séparés).\n\n## Variables\n- `{{baseUrl}}` : http://127.0.0.1:8080\n- `{{adminDir}}` : admin97512pee6coofvkvbtu\n- `{{wsKey}}` : votre clé Webservice\n- `{{accessToken}}` : token OAuth2 (rempli auto par le request OAuth2)\n- `{{adminToken}}` : token CSRF admin (récupéré dans l'URL après login BO)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {"key": "username", "value": "{{wsKey}}", "type": "string"},
+      {"key": "password", "value": "", "type": "string"}
+    ]
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://127.0.0.1:8080"},
+    {"key": "adminDir", "value": "admin97512pee6coofvkvbtu"},
+    {"key": "wsKey", "value": "7Q4NKLRMB4FFXGEWRITAZ8EDZDP2RSKG"},
+    {"key": "accessToken", "value": ""},
+    {"key": "clientId", "value": ""},
+    {"key": "clientSecret", "value": ""}
+  ],
+  "item": [
+    {
+      "name": "0. Authentication",
+      "description": "Tous les endpoints d'authentification de PrestaShop.\n\n## Comment différencier admin / customer ?\n- Le **customer** se connecte sur `/index.php?controller=authentication` → cookie `id_customer`\n- L'**admin** (employé) se connecte sur `/{{adminDir}}/index.php?controller=AdminLogin` → cookie `id_employee` + `profile`\n- Les 2 cookies sont indépendants (chemin différent) : on peut être les 2 simultanément\n- Détection serveur : `Context::getContext()->customer->isLogged()` vs `->employee->isLoggedBack()`\n- Niveau admin : `id_profile=1` = SuperAdmin, sinon table `ps_access` définit les droits\n\nPostman gère automatiquement les cookies — connecte-toi d'abord, puis appelle les endpoints protégés.",
+      "auth": {"type": "noauth"},
+      "item": [
+        {
+          "name": "Customer - Login (front)",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "// Récupère et stocke le cookie session customer si succès",
+            "pm.test('Login OK', function(){ pm.response.to.have.status(200); });"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/x-www-form-urlencoded"},
+              {"key": "X-Requested-With", "value": "XMLHttpRequest"}
+            ],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "email", "value": "user@example.com"},
+              {"key": "password", "value": "password123"},
+              {"key": "submitLogin", "value": "1"},
+              {"key": "ajax", "value": "1"},
+              {"key": "back", "value": "my-account"}
+            ]},
+            "url": {"raw": "{{baseUrl}}/index.php?controller=authentication", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "authentication"}]},
+            "description": "Login d'un client front-office.\nResponse AJAX : `{\"hasError\":false,\"errors\":[]}`\nCookie créé : `PrestaShop-{hash}` contenant `id_customer`."
+          }
+        },
+        {
+          "name": "Customer - Register (front)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "id_gender", "value": "1"},
+              {"key": "firstname", "value": "John"},
+              {"key": "lastname", "value": "Doe"},
+              {"key": "email", "value": "newuser@example.com"},
+              {"key": "password", "value": "password123"},
+              {"key": "birthday", "value": "1990-01-15"},
+              {"key": "newsletter", "value": "1"},
+              {"key": "psgdpr", "value": "1"},
+              {"key": "submitCreate", "value": "1"}
+            ]},
+            "url": {"raw": "{{baseUrl}}/index.php?controller=registration", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "registration"}]}
+          }
+        },
+        {
+          "name": "Customer - Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "email", "value": "user@example.com"}
+            ]},
+            "url": {"raw": "{{baseUrl}}/index.php?controller=password", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "password"}]},
+            "description": "Envoie un email de réinitialisation de mot de passe au client."
+          }
+        },
+        {
+          "name": "Customer - Reset password (lien email)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "passwd", "value": "newpassword123"},
+              {"key": "confirmation", "value": "newpassword123"}
+            ]},
+            "url": {"raw": "{{baseUrl}}/index.php?controller=password&token={token}&id_customer={id}&reset_token={reset_token}", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [
+              {"key": "controller", "value": "password"},
+              {"key": "token", "value": "{token}"},
+              {"key": "id_customer", "value": "{id}"},
+              {"key": "reset_token", "value": "{reset_token}"}
+            ]},
+            "description": "Confirme la réinitialisation. Token + reset_token + id_customer viennent du lien dans l'email."
+          }
+        },
+        {
+          "name": "Customer - Logout (front)",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/index.php?controller=authentication&mylogout=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [
+              {"key": "controller", "value": "authentication"},
+              {"key": "mylogout", "value": "1"}
+            ]}
+          }
+        },
+        {
+          "name": "Customer - Identity (verify logged-in)",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/index.php?controller=identity", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "identity"}]},
+            "description": "Si on est connecté en tant que customer, retourne la page d'identité. Sinon redirige vers login."
+          }
+        },
+        {
+          "name": "Admin - Login (BO)",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "// Si succès, l'URL de redirect contient le token CSRF admin",
+            "try {",
+            "  var json = pm.response.json();",
+            "  if (json.redirect) {",
+            "    var m = json.redirect.match(/token=([a-f0-9]+)/i);",
+            "    if (m) {",
+            "      pm.collectionVariables.set('adminToken', m[1]);",
+            "      console.log('adminToken stocké : ' + m[1]);",
+            "    }",
+            "  }",
+            "} catch(e) {}"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "email", "value": "admin@example.com"},
+              {"key": "passwd", "value": "admin_password"},
+              {"key": "submitLogin", "value": "1"},
+              {"key": "ajax", "value": "1"},
+              {"key": "stay_logged_in", "value": "1"},
+              {"key": "redirect", "value": "AdminDashboard"}
+            ]},
+            "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminLogin&ajax=1&action=login", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [
+              {"key": "controller", "value": "AdminLogin"},
+              {"key": "ajax", "value": "1"},
+              {"key": "action", "value": "login"}
+            ]},
+            "description": "Login d'un employé/admin sur le back-office.\n\nRéponse JSON : `{\"hasErrors\":false,\"redirect\":\"...index.php?controller=AdminDashboard&token=XXX\"}`\n\nLe **token** CSRF est extrait automatiquement par le test-script et stocké dans `{{adminToken}}` pour les requêtes BO suivantes.\n\nEn cas d'erreur : `{\"hasErrors\":true,\"errors\":[\"...\"]}`"
+          }
+        },
+        {
+          "name": "Admin - Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "email_forgot", "value": "admin@example.com"},
+              {"key": "ajax", "value": "1"}
+            ]},
+            "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminLogin&ajax=1&action=forgot", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [
+              {"key": "controller", "value": "AdminLogin"},
+              {"key": "ajax", "value": "1"},
+              {"key": "action", "value": "forgot"}
+            ]}
+          }
+        },
+        {
+          "name": "Admin - Reset password",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "reset_token", "value": "{token}"},
+              {"key": "id_employee", "value": "1"},
+              {"key": "reset_passwd", "value": "newpass123"},
+              {"key": "reset_confirm", "value": "newpass123"},
+              {"key": "ajax", "value": "1"}
+            ]},
+            "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminLogin&ajax=1&action=reset", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [
+              {"key": "controller", "value": "AdminLogin"},
+              {"key": "ajax", "value": "1"},
+              {"key": "action", "value": "reset"}
+            ]}
+          }
+        },
+        {
+          "name": "Admin - Logout (BO)",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminLogin&logout&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [
+              {"key": "controller", "value": "AdminLogin"},
+              {"key": "logout", "value": null},
+              {"key": "token", "value": "{{adminToken}}"}
+            ]}
+          }
+        },
+        {
+          "name": "Admin - Verify session (Dashboard)",
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminDashboard&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [
+              {"key": "controller", "value": "AdminDashboard"},
+              {"key": "token", "value": "{{adminToken}}"}
+            ]},
+            "description": "Charge le dashboard. Si pas connecté ou token invalide → redirige vers AdminLogin."
+          }
+        },
+        {
+          "name": "Webservice - Test API key (Basic Auth)",
+          "auth": {"type": "basic", "basic": [
+            {"key": "username", "value": "{{wsKey}}", "type": "string"},
+            {"key": "password", "value": "", "type": "string"}
+          ]},
+          "request": {
+            "method": "GET",
+            "url": {"raw": "{{baseUrl}}/api?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api"], "query": [{"key": "output_format", "value": "JSON"}]},
+            "description": "Vérifie la clé Webservice. Authentification Basic : username = clé, password = vide.\n\nRetourne la liste des ressources accessibles avec cette clé. Si la clé est invalide → 401."
+          }
+        },
+        {
+          "name": "OAuth2 - Get access token",
+          "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+            "// Stocke automatiquement l'access_token pour les autres requêtes",
+            "try {",
+            "  var json = pm.response.json();",
+            "  if (json.access_token) {",
+            "    pm.collectionVariables.set('accessToken', json.access_token);",
+            "    console.log('accessToken stocké (expires_in=' + json.expires_in + 's)');",
+            "  }",
+            "} catch(e) {}"
+          ]}}],
+          "request": {
+            "method": "POST",
+            "auth": {"type": "noauth"},
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "grant_type", "value": "client_credentials"},
+              {"key": "client_id", "value": "{{clientId}}"},
+              {"key": "client_secret", "value": "{{clientSecret}}"},
+              {"key": "scope", "value": ""}
+            ]},
+            "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/oauth2/token", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "oauth2", "token"]},
+            "description": "Récupère un Bearer token OAuth2.\n\n**Prérequis** : créer une API Client dans BO > Paramètres avancés > API et noter `client_id` + `client_secret`. Définir les scopes (ex: `stock_read`, `stock_write`, `product_read`...).\n\n**Réponse** :\n```json\n{\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 3600,\n  \"access_token\": \"eyJ0eXAi...\"\n}\n```\n\nLe token est stocké automatiquement dans `{{accessToken}}` par le test-script."
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Webservice REST API",
+      "description": "API REST PrestaShop principale (`/api/{resource}`). Chaque ressource expose les méthodes : GET (liste / détail), POST (création), PUT (mise à jour), DELETE (suppression), HEAD (en-têtes uniquement).\n\nParamètres communs : `display=full|[field1,field2]`, `filter[field]=value`, `sort=[field_ASC]`, `limit=10` ou `limit=offset,nb`, `output_format=JSON|XML`, `schema=blank|synopsis`.",
+      "item": [
+        {
+          "name": "API root - List all resources",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Output-Format", "value": "JSON"}],
+            "url": {"raw": "{{baseUrl}}/api?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api"], "query": [{"key": "output_format", "value": "JSON"}]}
+          }
+        },
+        {
+          "name": "addresses",
+          "item": [
+            {"name": "List addresses", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/addresses?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "addresses"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+            {"name": "Get address by id", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/addresses/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "addresses", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}},
+            {"name": "Create address", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/xml"}], "body": {"mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<prestashop>\n  <address>\n    <id_customer>1</id_customer>\n    <id_country>8</id_country>\n    <alias>My Address</alias>\n    <lastname>Doe</lastname>\n    <firstname>John</firstname>\n    <address1>1 rue Exemple</address1>\n    <postcode>75000</postcode>\n    <city>Paris</city>\n  </address>\n</prestashop>"}, "url": {"raw": "{{baseUrl}}/api/addresses", "host": ["{{baseUrl}}"], "path": ["api", "addresses"]}}},
+            {"name": "Update address", "request": {"method": "PUT", "header": [{"key": "Content-Type", "value": "application/xml"}], "body": {"mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<prestashop>\n  <address>\n    <id>1</id>\n    <city>Lyon</city>\n  </address>\n</prestashop>"}, "url": {"raw": "{{baseUrl}}/api/addresses/:id", "host": ["{{baseUrl}}"], "path": ["api", "addresses", ":id"], "variable": [{"key": "id", "value": "1"}]}}},
+            {"name": "Delete address", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/api/addresses/:id", "host": ["{{baseUrl}}"], "path": ["api", "addresses", ":id"], "variable": [{"key": "id", "value": "1"}]}}},
+            {"name": "Get blank schema", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/addresses?schema=blank&output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "addresses"], "query": [{"key": "schema", "value": "blank"}, {"key": "output_format", "value": "JSON"}]}}}
+          ]
+        },
+        {"name": "attachments", "item": [
+          {"name": "List attachments", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/attachments?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "attachments"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get attachment", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/attachments/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "attachments", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Get attachment file (binary)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/attachments/file/:id", "host": ["{{baseUrl}}"], "path": ["api", "attachments", "file", ":id"], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "carriers", "item": [
+          {"name": "List carriers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/carriers?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "carriers"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get carrier", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/carriers/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "carriers", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "carts", "item": [
+          {"name": "List carts", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/carts?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "carts"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get cart", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/carts/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "carts", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "cart_rules", "item": [
+          {"name": "List cart rules", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/cart_rules?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "cart_rules"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get cart rule", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/cart_rules/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "cart_rules", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "categories", "item": [
+          {"name": "List categories", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/categories?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "categories"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get category", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/categories/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "categories", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Filter categories by name", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/categories?filter[name]=Home&output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "categories"], "query": [{"key": "filter[name]", "value": "Home"}, {"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "combinations", "item": [
+          {"name": "List combinations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/combinations?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "combinations"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get combination", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/combinations/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "combinations", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "configurations", "item": [
+          {"name": "List configurations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/configurations?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "configurations"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get configuration", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/configurations/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "configurations", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "contacts", "item": [
+          {"name": "List contacts", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/contacts?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "contacts"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get contact", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/contacts/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "contacts", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "content_management_system", "item": [
+          {"name": "List CMS pages", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/content_management_system?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "content_management_system"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get CMS page", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/content_management_system/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "content_management_system", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "countries", "item": [
+          {"name": "List countries", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/countries?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "countries"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get country", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/countries/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "countries", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "currencies", "item": [
+          {"name": "List currencies", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/currencies?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "currencies"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get currency", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/currencies/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "currencies", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "customers", "item": [
+          {"name": "List customers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customers?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "customers"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get customer", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customers/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "customers", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Filter customers by email", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customers?filter[email]=test@example.com&output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "customers"], "query": [{"key": "filter[email]", "value": "test@example.com"}, {"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Create customer", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/xml"}], "body": {"mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<prestashop>\n  <customer>\n    <firstname>John</firstname>\n    <lastname>Doe</lastname>\n    <email>john.doe@example.com</email>\n    <passwd>password123</passwd>\n    <id_default_group>3</id_default_group>\n    <active>1</active>\n  </customer>\n</prestashop>"}, "url": {"raw": "{{baseUrl}}/api/customers", "host": ["{{baseUrl}}"], "path": ["api", "customers"]}}}
+        ]},
+        {"name": "customer_threads", "item": [
+          {"name": "List customer threads", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customer_threads?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "customer_threads"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get customer thread", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customer_threads/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "customer_threads", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "customer_messages", "item": [
+          {"name": "List customer messages", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customer_messages?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "customer_messages"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get customer message", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customer_messages/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "customer_messages", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "customizations", "item": [
+          {"name": "List customizations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/customizations?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "customizations"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "deliveries", "item": [
+          {"name": "List deliveries", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/deliveries?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "deliveries"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "employees", "item": [
+          {"name": "List employees", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/employees?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "employees"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get employee", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/employees/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "employees", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "groups", "item": [
+          {"name": "List customer groups", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/groups?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "groups"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "guests", "item": [
+          {"name": "List guests", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/guests?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "guests"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "images", "item": [
+          {"name": "List image categories", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "images"], "query": [{"key": "output_format", "value": "JSON"}]}}},
+          {"name": "List general images", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images/general?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "images", "general"], "query": [{"key": "output_format", "value": "JSON"}]}}},
+          {"name": "Get product image", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images/products/:productId/:imageId", "host": ["{{baseUrl}}"], "path": ["api", "images", "products", ":productId", ":imageId"], "variable": [{"key": "productId", "value": "1"}, {"key": "imageId", "value": "1"}]}}},
+          {"name": "Get product image (default)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images/products/:productId", "host": ["{{baseUrl}}"], "path": ["api", "images", "products", ":productId"], "variable": [{"key": "productId", "value": "1"}]}}},
+          {"name": "Upload product image", "request": {"method": "POST", "body": {"mode": "formdata", "formdata": [{"key": "image", "type": "file", "src": ""}]}, "url": {"raw": "{{baseUrl}}/api/images/products/:productId", "host": ["{{baseUrl}}"], "path": ["api", "images", "products", ":productId"], "variable": [{"key": "productId", "value": "1"}]}}},
+          {"name": "Delete product image", "request": {"method": "DELETE", "url": {"raw": "{{baseUrl}}/api/images/products/:productId/:imageId", "host": ["{{baseUrl}}"], "path": ["api", "images", "products", ":productId", ":imageId"], "variable": [{"key": "productId", "value": "1"}, {"key": "imageId", "value": "1"}]}}},
+          {"name": "Get category image", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images/categories/:id", "host": ["{{baseUrl}}"], "path": ["api", "images", "categories", ":id"], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Get manufacturer image", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images/manufacturers/:id", "host": ["{{baseUrl}}"], "path": ["api", "images", "manufacturers", ":id"], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Get supplier image", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images/suppliers/:id", "host": ["{{baseUrl}}"], "path": ["api", "images", "suppliers", ":id"], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Get store image", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/images/stores/:id", "host": ["{{baseUrl}}"], "path": ["api", "images", "stores", ":id"], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "image_types", "item": [
+          {"name": "List image types", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/image_types?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "image_types"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "languages", "item": [
+          {"name": "List languages", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/languages?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "languages"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "manufacturers", "item": [
+          {"name": "List manufacturers (brands)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/manufacturers?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "manufacturers"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get manufacturer", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/manufacturers/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "manufacturers", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "messages", "item": [
+          {"name": "List messages", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/messages?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "messages"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "orders", "item": [
+          {"name": "List orders", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/orders?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "orders"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get order", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/orders/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "orders", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Filter orders by customer", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/orders?filter[id_customer]=1&output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "orders"], "query": [{"key": "filter[id_customer]", "value": "1"}, {"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "order_carriers", "item": [
+          {"name": "List order carriers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_carriers?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_carriers"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "order_cart_rules", "item": [
+          {"name": "List order cart rules", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_cart_rules?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_cart_rules"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "order_details", "item": [
+          {"name": "List order details", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_details?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_details"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get order detail", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_details/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "order_details", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "order_histories", "item": [
+          {"name": "List order histories", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_histories?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_histories"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "order_invoices", "item": [
+          {"name": "List order invoices", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_invoices?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_invoices"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "order_payments", "item": [
+          {"name": "List order payments", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_payments?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_payments"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "order_states", "item": [
+          {"name": "List order states", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_states?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_states"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "order_slip", "item": [
+          {"name": "List order slips", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/order_slip?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "order_slip"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "price_ranges", "item": [
+          {"name": "List price ranges", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/price_ranges?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "price_ranges"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "products", "item": [
+          {"name": "List products", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/products?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "products"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get product", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/products/:id?output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "products", ":id"], "query": [{"key": "output_format", "value": "JSON"}], "variable": [{"key": "id", "value": "1"}]}}},
+          {"name": "Filter products by name", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/products?filter[name]=%25t-shirt%25&output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "products"], "query": [{"key": "filter[name]", "value": "%25t-shirt%25"}, {"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Limit & Sort products", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/products?limit=10&sort=[id_DESC]&output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "products"], "query": [{"key": "limit", "value": "10"}, {"key": "sort", "value": "[id_DESC]"}, {"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Get product schema", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/products?schema=blank&output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "products"], "query": [{"key": "schema", "value": "blank"}, {"key": "output_format", "value": "JSON"}]}}},
+          {"name": "Create product", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/xml"}], "body": {"mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<prestashop>\n  <product>\n    <name><language id=\"1\">New product</language></name>\n    <link_rewrite><language id=\"1\">new-product</language></link_rewrite>\n    <id_category_default>2</id_category_default>\n    <price>9.99</price>\n    <active>1</active>\n  </product>\n</prestashop>"}, "url": {"raw": "{{baseUrl}}/api/products", "host": ["{{baseUrl}}"], "path": ["api", "products"]}}}
+        ]},
+        {"name": "product_customization_fields", "item": [
+          {"name": "List customization fields", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/product_customization_fields?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "product_customization_fields"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "product_features", "item": [
+          {"name": "List product features", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/product_features?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "product_features"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "product_feature_values", "item": [
+          {"name": "List product feature values", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/product_feature_values?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "product_feature_values"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "product_options", "item": [
+          {"name": "List product options (attribute groups)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/product_options?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "product_options"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "product_option_values", "item": [
+          {"name": "List product option values", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/product_option_values?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "product_option_values"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "product_suppliers", "item": [
+          {"name": "List product suppliers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/product_suppliers?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "product_suppliers"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "search", "item": [
+          {"name": "Search products / categories", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/search?query=t-shirt&language=1&output_format=JSON", "host": ["{{baseUrl}}"], "path": ["api", "search"], "query": [{"key": "query", "value": "t-shirt"}, {"key": "language", "value": "1"}, {"key": "output_format", "value": "JSON"}]}}},
+          {"name": "Search products multi-criteria", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/products?filter[name]=%25t-shirt%25&filter[active]=1&filter[id_category_default]=2&sort=[id_DESC]&limit=10&output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "products"], "query": [{"key": "filter[name]", "value": "%25t-shirt%25"}, {"key": "filter[active]", "value": "1"}, {"key": "filter[id_category_default]", "value": "2"}, {"key": "sort", "value": "[id_DESC]"}, {"key": "limit", "value": "10"}, {"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "shops", "item": [
+          {"name": "List shops", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/shops?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "shops"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "shop_groups", "item": [
+          {"name": "List shop groups", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/shop_groups?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "shop_groups"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "shop_urls", "item": [
+          {"name": "List shop URLs", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/shop_urls?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "shop_urls"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "specific_prices", "item": [
+          {"name": "List specific prices", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/specific_prices?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "specific_prices"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "specific_price_rules", "item": [
+          {"name": "List specific price rules", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/specific_price_rules?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "specific_price_rules"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "states", "item": [
+          {"name": "List states", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/states?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "states"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "stock_availables", "item": [
+          {"name": "List stock availables", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/stock_availables?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "stock_availables"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}},
+          {"name": "Update stock available", "request": {"method": "PUT", "header": [{"key": "Content-Type", "value": "application/xml"}], "body": {"mode": "raw", "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<prestashop>\n  <stock_available>\n    <id>1</id>\n    <id_product>1</id_product>\n    <id_product_attribute>0</id_product_attribute>\n    <id_shop>1</id_shop>\n    <id_shop_group>0</id_shop_group>\n    <quantity>100</quantity>\n  </stock_available>\n</prestashop>"}, "url": {"raw": "{{baseUrl}}/api/stock_availables/:id", "host": ["{{baseUrl}}"], "path": ["api", "stock_availables", ":id"], "variable": [{"key": "id", "value": "1"}]}}}
+        ]},
+        {"name": "stock_movements", "item": [
+          {"name": "List stock movements", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/stock_movements?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "stock_movements"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "stock_movement_reasons", "item": [
+          {"name": "List stock movement reasons", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/stock_movement_reasons?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "stock_movement_reasons"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "stocks", "item": [
+          {"name": "List stocks", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/stocks?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "stocks"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "stores", "item": [
+          {"name": "List stores", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/stores?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "stores"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "suppliers", "item": [
+          {"name": "List suppliers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/suppliers?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "suppliers"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "supply_orders", "item": [
+          {"name": "List supply orders", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/supply_orders?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "supply_orders"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "supply_order_details", "item": [
+          {"name": "List supply order details", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/supply_order_details?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "supply_order_details"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "supply_order_states", "item": [
+          {"name": "List supply order states", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/supply_order_states?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "supply_order_states"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "supply_order_histories", "item": [
+          {"name": "List supply order histories", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/supply_order_histories?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "supply_order_histories"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "supply_order_receipt_histories", "item": [
+          {"name": "List supply order receipt histories", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/supply_order_receipt_histories?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "supply_order_receipt_histories"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "tags", "item": [
+          {"name": "List tags", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/tags?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "tags"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "taxes", "item": [
+          {"name": "List taxes", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/taxes?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "taxes"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "tax_rules", "item": [
+          {"name": "List tax rules", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/tax_rules?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "tax_rules"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "tax_rule_groups", "item": [
+          {"name": "List tax rule groups", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/tax_rule_groups?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "tax_rule_groups"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "translated_configurations", "item": [
+          {"name": "List translated configurations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/translated_configurations?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "translated_configurations"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "warehouses", "item": [
+          {"name": "List warehouses", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/warehouses?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "warehouses"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "warehouse_product_locations", "item": [
+          {"name": "List warehouse product locations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/warehouse_product_locations?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "warehouse_product_locations"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "weight_ranges", "item": [
+          {"name": "List weight ranges", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/weight_ranges?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "weight_ranges"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]},
+        {"name": "zones", "item": [
+          {"name": "List zones", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/api/zones?output_format=JSON&display=full", "host": ["{{baseUrl}}"], "path": ["api", "zones"], "query": [{"key": "output_format", "value": "JSON"}, {"key": "display", "value": "full"}]}}}
+        ]}
+      ]
+    },
+    {
+      "name": "2. Symfony Admin API (OAuth2)",
+      "description": "API Symfony moderne accessible via le dossier admin avec OAuth2.\n\nFlow OAuth2 :\n1. Créer un client API dans `Paramètres avancés > API`\n2. Demander un token via `POST /admin{adminDir}/api/oauth2/token`\n3. Utiliser le token Bearer dans les autres requêtes",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{"key": "token", "value": "{{accessToken}}", "type": "string"}]
+      },
+      "item": [
+        {
+          "name": "OAuth2 - Get access token",
+          "request": {
+            "method": "POST",
+            "auth": {"type": "noauth"},
+            "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}],
+            "body": {"mode": "urlencoded", "urlencoded": [
+              {"key": "grant_type", "value": "client_credentials"},
+              {"key": "client_id", "value": "{{clientId}}"},
+              {"key": "client_secret", "value": "{{clientSecret}}"},
+              {"key": "scope", "value": ""}
+            ]},
+            "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/oauth2/token", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "oauth2", "token"]}
+          }
+        },
+        {"name": "Stocks - List products", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stocks/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stocks", ""]}}},
+        {"name": "Stocks - Export products", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stocks/export", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stocks", "export"]}}},
+        {"name": "Stocks - List product combinations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stocks/:productId", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stocks", ":productId"], "variable": [{"key": "productId", "value": "1"}]}}},
+        {"name": "Stocks - Edit product stock", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"delta\": 5,\n  \"physical_quantity\": 100\n}"}, "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stocks/product/:productId", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stocks", "product", ":productId"], "variable": [{"key": "productId", "value": "1"}]}}},
+        {"name": "Stocks - Edit combination stock", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"delta\": 5,\n  \"physical_quantity\": 50\n}"}, "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stocks/product/:productId/combination/:combinationId", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stocks", "product", ":productId", "combination", ":combinationId"], "variable": [{"key": "productId", "value": "1"}, {"key": "combinationId", "value": "1"}]}}},
+        {"name": "Stocks - Bulk edit", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "[\n  {\"product_id\": 1, \"delta\": 5},\n  {\"product_id\": 2, \"delta\": 10}\n]"}, "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stocks/products", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stocks", "products"]}}},
+        {"name": "Stock movements - List", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stock-movements/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stock-movements", ""]}}},
+        {"name": "Stock movements - By product", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stock-movements/product/:productId", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stock-movements", "product", ":productId"], "variable": [{"key": "productId", "value": "1"}]}}},
+        {"name": "Stock movements - Employees", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stock-movements/employees", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stock-movements", "employees"]}}},
+        {"name": "Stock movements - Types", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/stock-movements/types", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "stock-movements", "types"]}}},
+        {"name": "Suppliers - List", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/suppliers/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "suppliers", ""]}}},
+        {"name": "Manufacturers - List", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/manufacturers/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "manufacturers", ""]}}},
+        {"name": "Categories - List", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/categories/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "categories", ""]}}},
+        {"name": "Attributes - List", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/attributes/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "attributes", ""]}}},
+        {"name": "Features - List", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/features/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "features", ""]}}},
+        {"name": "i18n - List translations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/i18n/:page", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "i18n", ":page"], "variable": [{"key": "page", "value": "products"}]}}},
+        {"name": "Translations - Tree", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/translations/tree/:lang/:type/:selected", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "translations", "tree", ":lang", ":type", ":selected"], "variable": [{"key": "lang", "value": "en"}, {"key": "type", "value": "front"}, {"key": "selected", "value": "default"}]}}},
+        {"name": "Translations - Domain catalog", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/translations/:locale/:domain/:theme", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "translations", ":locale", ":domain", ":theme"], "variable": [{"key": "locale", "value": "en-US"}, {"key": "domain", "value": "AdminCatalog"}, {"key": "theme", "value": "classic"}]}}},
+        {"name": "Translations - Edit", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"locale\": \"en-US\",\n  \"domain\": \"AdminCatalog\",\n  \"key\": \"...\",\n  \"value\": \"...\"\n}"}, "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/translations/edit", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "translations", "edit"]}}},
+        {"name": "Translations - Reset", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/translations/reset", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "translations", "reset"]}}},
+        {"name": "Positions - Update (improve/design)", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/{{adminDir}}/api/improve/design/positions/", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "api", "improve", "design", "positions", ""]}}}
+      ]
+    },
+    {
+      "name": "3. Front Office - Pages",
+      "description": "Pages publiques du front-office. Routes accessibles soit via URL réécrite (Friendly URLs) soit via `index.php?controller=...`.",
+      "auth": {"type": "noauth"},
+      "item": [
+        {"name": "Index (homepage)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/", "host": ["{{baseUrl}}"], "path": [""]}}},
+        {"name": "Index (controller)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=index", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "index"}]}}},
+        {"name": "Authentication (login/register)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=authentication", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "authentication"}]}}},
+        {"name": "Authentication - Login (POST)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "email", "value": "user@example.com"}, {"key": "password", "value": "password"}, {"key": "submitLogin", "value": "1"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=authentication", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "authentication"}]}}},
+        {"name": "Registration", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=registration", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "registration"}]}}},
+        {"name": "Password reset", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=password", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "password"}]}}},
+        {"name": "My account", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=my-account", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "my-account"}]}}},
+        {"name": "Identity", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=identity", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "identity"}]}}},
+        {"name": "Addresses (list)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=addresses", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "addresses"}]}}},
+        {"name": "Address (form)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=address", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "address"}]}}},
+        {"name": "Cart", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=cart", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "cart"}]}}},
+        {"name": "Order checkout", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=order", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order"}]}}},
+        {"name": "Order confirmation", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=order-confirmation&id_cart=1&id_module=1&id_order=1&key=...", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order-confirmation"}, {"key": "id_cart", "value": "1"}, {"key": "id_module", "value": "1"}, {"key": "id_order", "value": "1"}, {"key": "key", "value": "..."}]}}},
+        {"name": "Order detail", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=order-detail&id_order=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order-detail"}, {"key": "id_order", "value": "1"}]}}},
+        {"name": "Order follow", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=order-follow", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order-follow"}]}}},
+        {"name": "Order return", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=order-return&id_order_return=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order-return"}, {"key": "id_order_return", "value": "1"}]}}},
+        {"name": "Order slip", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=order-slip", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order-slip"}]}}},
+        {"name": "Guest tracking", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=guest-tracking", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "guest-tracking"}]}}},
+        {"name": "Order history", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=history", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "history"}]}}},
+        {"name": "Discounts (vouchers)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=discount", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "discount"}]}}},
+        {"name": "Contact form", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=contact", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "contact"}]}}},
+        {"name": "Contact - Submit", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "multipart/form-data"}], "body": {"mode": "formdata", "formdata": [{"key": "id_contact", "value": "2", "type": "text"}, {"key": "from", "value": "user@example.com", "type": "text"}, {"key": "message", "value": "Hello", "type": "text"}, {"key": "submitMessage", "value": "1", "type": "text"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=contact", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "contact"}]}}},
+        {"name": "CMS page", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=cms&id_cms=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "cms"}, {"key": "id_cms", "value": "1"}]}}},
+        {"name": "Sitemap", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=sitemap", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "sitemap"}]}}},
+        {"name": "Stores (locator)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=stores", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "stores"}]}}},
+        {"name": "Search", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=search&s=t-shirt", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "search"}, {"key": "s", "value": "t-shirt"}]}}},
+        {"name": "Best sales", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=best-sales", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "best-sales"}]}}},
+        {"name": "New products", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=new-products", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "new-products"}]}}},
+        {"name": "Prices drop (sale)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=prices-drop", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "prices-drop"}]}}},
+        {"name": "Category", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=category&id_category=2", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "category"}, {"key": "id_category", "value": "2"}]}}},
+        {"name": "Manufacturer", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=manufacturer", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "manufacturer"}]}}},
+        {"name": "Supplier", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=supplier", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "supplier"}]}}},
+        {"name": "Product", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=product&id_product=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "product"}, {"key": "id_product", "value": "1"}]}}},
+        {"name": "Attachment download", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=attachment&id_attachment=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "attachment"}, {"key": "id_attachment", "value": "1"}]}}},
+        {"name": "Get file (download virtual product)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=get-file&key=...", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "get-file"}, {"key": "key", "value": "..."}]}}},
+        {"name": "PDF Invoice", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=pdf-invoice&id_order=1&secure_key=...", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "pdf-invoice"}, {"key": "id_order", "value": "1"}, {"key": "secure_key", "value": "..."}]}}},
+        {"name": "PDF Order Slip", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=pdf-order-slip&id_order_slip=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "pdf-order-slip"}, {"key": "id_order_slip", "value": "1"}]}}},
+        {"name": "PDF Order Return", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=pdf-order-return&id_order_return=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "pdf-order-return"}, {"key": "id_order_return", "value": "1"}]}}},
+        {"name": "Statistics (tracking pixel)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=statistics", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "statistics"}]}}},
+        {"name": "Change currency", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=changecurrency&id_currency=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "changecurrency"}, {"key": "id_currency", "value": "1"}]}}},
+        {"name": "404 page", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?controller=pagenotfound", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "pagenotfound"}]}}},
+        {"name": "Upload (file)", "request": {"method": "POST", "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": ""}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=upload", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "upload"}]}}}
+      ]
+    },
+    {
+      "name": "4. Front AJAX endpoints",
+      "description": "Endpoints AJAX exposés par les contrôleurs front. Toujours appelés avec `ajax=1` ou via XMLHttpRequest.",
+      "auth": {"type": "noauth"},
+      "item": [
+        {"name": "Cart - Update (add/update/delete)", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "ajax", "value": "1"}, {"key": "action", "value": "update"}, {"key": "id_product", "value": "1"}, {"key": "id_product_attribute", "value": "0"}, {"key": "qty", "value": "1"}, {"key": "op", "value": "up"}, {"key": "token", "value": "{{cartToken}}"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=cart", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "cart"}]}}},
+        {"name": "Cart - Refresh", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "ajax", "value": "1"}, {"key": "action", "value": "refresh"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=cart", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "cart"}]}}},
+        {"name": "Cart - Product refresh", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "ajax", "value": "1"}, {"key": "action", "value": "productRefresh"}, {"key": "id_product", "value": "1"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=cart", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "cart"}]}}},
+        {"name": "Product - Quick view", "request": {"method": "GET", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "url": {"raw": "{{baseUrl}}/index.php?controller=product&ajax=1&action=quickview&id_product=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "product"}, {"key": "ajax", "value": "1"}, {"key": "action", "value": "quickview"}, {"key": "id_product", "value": "1"}]}}},
+        {"name": "Product - Refresh (combination change)", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "ajax", "value": "1"}, {"key": "action", "value": "refresh"}, {"key": "id_product", "value": "1"}, {"key": "group", "value": "{}"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=product", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "product"}]}}},
+        {"name": "Order - Select delivery option", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "ajax", "value": "1"}, {"key": "action", "value": "selectDeliveryOption"}, {"key": "delivery_option[X]", "value": "1,"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=order", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order"}]}}},
+        {"name": "Order - Check cart still orderable", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "ajax", "value": "1"}, {"key": "action", "value": "checkCartStillOrderable"}]}, "url": {"raw": "{{baseUrl}}/index.php?controller=order", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order"}]}}},
+        {"name": "Order - Address form", "request": {"method": "GET", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "url": {"raw": "{{baseUrl}}/index.php?controller=order&ajax=1&action=addressForm&id_country=8", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "order"}, {"key": "ajax", "value": "1"}, {"key": "action", "value": "addressForm"}, {"key": "id_country", "value": "8"}]}}},
+        {"name": "Address - Country state form", "request": {"method": "GET", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "url": {"raw": "{{baseUrl}}/index.php?controller=address&ajax=1&id_country=8", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "address"}, {"key": "ajax", "value": "1"}, {"key": "id_country", "value": "8"}]}}},
+        {"name": "Stores - List (json)", "request": {"method": "GET", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "url": {"raw": "{{baseUrl}}/index.php?controller=stores&ajax=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "controller", "value": "stores"}, {"key": "ajax", "value": "1"}]}}}
+      ]
+    },
+    {
+      "name": "5. Modules - Front controllers",
+      "description": "Endpoints exposés par les modules via `index.php?fc=module&module={name}&controller={ctrl}` ou `module/{module}/{controller}`.",
+      "auth": {"type": "noauth"},
+      "item": [
+        {
+          "name": "blockwishlist",
+          "item": [
+            {"name": "Lists - View user lists", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=blockwishlist&controller=lists", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "blockwishlist"}, {"key": "controller", "value": "lists"}]}}},
+            {"name": "View - View one list", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=blockwishlist&controller=view&id_wishlist=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "blockwishlist"}, {"key": "controller", "value": "view"}, {"key": "id_wishlist", "value": "1"}]}}},
+            {"name": "Action - Add product to wishlist", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "action", "value": "addProduct"}, {"key": "id_wishlist", "value": "1"}, {"key": "id_product", "value": "1"}, {"key": "id_product_attribute", "value": "0"}, {"key": "quantity", "value": "1"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=blockwishlist&controller=action", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "blockwishlist"}, {"key": "controller", "value": "action"}]}}},
+            {"name": "Action - Remove product from wishlist", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "action", "value": "deleteProduct"}, {"key": "id_wishlist", "value": "1"}, {"key": "id_product", "value": "1"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=blockwishlist&controller=action", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "blockwishlist"}, {"key": "controller", "value": "action"}]}}},
+            {"name": "Action - Create wishlist", "request": {"method": "POST", "header": [{"key": "X-Requested-With", "value": "XMLHttpRequest"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "action", "value": "createList"}, {"key": "name", "value": "My Wishlist"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=blockwishlist&controller=action", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "blockwishlist"}, {"key": "controller", "value": "action"}]}}}
+          ]
+        },
+        {
+          "name": "productcomments",
+          "item": [
+            {"name": "List comments", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=productcomments&controller=ListComments&id_product=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "productcomments"}, {"key": "controller", "value": "ListComments"}, {"key": "id_product", "value": "1"}]}}},
+            {"name": "Post comment", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"id_product\": 1,\n  \"customer_name\": \"John\",\n  \"title\": \"Great\",\n  \"content\": \"Nice product\",\n  \"criterions\": []\n}"}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=productcomments&controller=PostComment", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "productcomments"}, {"key": "controller", "value": "PostComment"}]}}},
+            {"name": "Comment grade (criterions)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=productcomments&controller=CommentGrade&id_product=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "productcomments"}, {"key": "controller", "value": "CommentGrade"}, {"key": "id_product", "value": "1"}]}}},
+            {"name": "Report comment", "request": {"method": "POST", "body": {"mode": "urlencoded", "urlencoded": [{"key": "id_product_comment", "value": "1"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=productcomments&controller=ReportComment", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "productcomments"}, {"key": "controller", "value": "ReportComment"}]}}},
+            {"name": "Update comment usefulness", "request": {"method": "POST", "body": {"mode": "urlencoded", "urlencoded": [{"key": "id_product_comment", "value": "1"}, {"key": "usefulness", "value": "1"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=productcomments&controller=UpdateCommentUsefulness", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "productcomments"}, {"key": "controller", "value": "UpdateCommentUsefulness"}]}}}
+          ]
+        },
+        {
+          "name": "ps_emailsubscription",
+          "item": [
+            {"name": "Subscribe", "request": {"method": "POST", "body": {"mode": "urlencoded", "urlencoded": [{"key": "email", "value": "user@example.com"}, {"key": "action", "value": "0"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_emailsubscription&controller=subscription", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_emailsubscription"}, {"key": "controller", "value": "subscription"}]}}},
+            {"name": "Verification (email confirm)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_emailsubscription&controller=verification&token=...&email=user@example.com", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_emailsubscription"}, {"key": "controller", "value": "verification"}, {"key": "token", "value": "..."}, {"key": "email", "value": "user@example.com"}]}}}
+          ]
+        },
+        {
+          "name": "ps_emailalerts",
+          "item": [
+            {"name": "Account alerts", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_emailalerts&controller=account", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_emailalerts"}, {"key": "controller", "value": "account"}]}}},
+            {"name": "Subscribe to product back-in-stock alert", "request": {"method": "POST", "body": {"mode": "urlencoded", "urlencoded": [{"key": "id_product", "value": "1"}, {"key": "id_product_attribute", "value": "0"}, {"key": "customer_email", "value": "user@example.com"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_emailalerts&controller=actions", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_emailalerts"}, {"key": "controller", "value": "actions"}]}}}
+          ]
+        },
+        {
+          "name": "ps_shoppingcart",
+          "item": [
+            {"name": "AJAX (cart count etc.)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_shoppingcart&controller=ajax", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_shoppingcart"}, {"key": "controller", "value": "ajax"}]}}}
+          ]
+        },
+        {
+          "name": "ps_facetedsearch",
+          "item": [
+            {"name": "Cron - Index rebuild", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_facetedsearch&controller=cron&token=...", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_facetedsearch"}, {"key": "controller", "value": "cron"}, {"key": "token", "value": "..."}]}}}
+          ]
+        },
+        {
+          "name": "gsitemap",
+          "item": [
+            {"name": "Sitemap", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=gsitemap&controller=index", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "gsitemap"}, {"key": "controller", "value": "index"}]}}},
+            {"name": "Cron - Generate sitemap", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=gsitemap&controller=cron&token=...", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "gsitemap"}, {"key": "controller", "value": "cron"}, {"key": "token", "value": "..."}]}}}
+          ]
+        },
+        {
+          "name": "psgdpr",
+          "item": [
+            {"name": "GDPR - Front entry", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=psgdpr&controller=gdpr", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "psgdpr"}, {"key": "controller", "value": "gdpr"}]}}},
+            {"name": "GDPR - Front AJAX", "request": {"method": "POST", "body": {"mode": "urlencoded", "urlencoded": [{"key": "action", "value": "consentMessage"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=psgdpr&controller=FrontAjaxGdpr", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "psgdpr"}, {"key": "controller", "value": "FrontAjaxGdpr"}]}}},
+            {"name": "GDPR - Export to PDF", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=psgdpr&controller=ExportDataToPdf&id_customer=1&token=...", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "psgdpr"}, {"key": "controller", "value": "ExportDataToPdf"}, {"key": "id_customer", "value": "1"}, {"key": "token", "value": "..."}]}}},
+            {"name": "GDPR - Export to CSV", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=psgdpr&controller=ExportDataToCsv&id_customer=1&token=...", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "psgdpr"}, {"key": "controller", "value": "ExportDataToCsv"}, {"key": "id_customer", "value": "1"}, {"key": "token", "value": "..."}]}}}
+          ]
+        },
+        {
+          "name": "ps_googleanalytics",
+          "item": [
+            {"name": "GA AJAX (events)", "request": {"method": "POST", "body": {"mode": "urlencoded", "urlencoded": [{"key": "ga_data", "value": "{}"}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_googleanalytics&controller=ajax", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_googleanalytics"}, {"key": "controller", "value": "ajax"}]}}}
+          ]
+        },
+        {
+          "name": "ps_checkout",
+          "item": [
+            {"name": "Create order (PayPal)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{}"}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=create", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "create"}]}}},
+            {"name": "Validate order", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "body": {"mode": "raw", "raw": "{\n  \"orderID\": \"...\",\n  \"payerID\": \"...\"\n}"}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=validate", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "validate"}]}}},
+            {"name": "Express checkout", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=ExpressCheckout", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "ExpressCheckout"}]}}},
+            {"name": "Apple Pay", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=applepay", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "applepay"}]}}},
+            {"name": "Google Pay", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=googlepay", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "googlepay"}]}}},
+            {"name": "Vault", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=vault", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "vault"}]}}},
+            {"name": "Payment", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=payment", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "payment"}]}}},
+            {"name": "Cancel", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=cancel", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "cancel"}]}}},
+            {"name": "Check (status)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=check", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "check"}]}}},
+            {"name": "Webhook (PayPal)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=webhook", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "webhook"}]}}},
+            {"name": "Dispatch webhook", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkout&controller=DispatchWebHook", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkout"}, {"key": "controller", "value": "DispatchWebHook"}]}}}
+          ]
+        },
+        {
+          "name": "ps_wirepayment",
+          "item": [
+            {"name": "Wire transfer - Payment", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_wirepayment&controller=payment", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_wirepayment"}, {"key": "controller", "value": "payment"}]}}},
+            {"name": "Wire transfer - Validation", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_wirepayment&controller=validation", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_wirepayment"}, {"key": "controller", "value": "validation"}]}}}
+          ]
+        },
+        {
+          "name": "ps_checkpayment",
+          "item": [
+            {"name": "Check - Payment", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkpayment&controller=payment", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkpayment"}, {"key": "controller", "value": "payment"}]}}},
+            {"name": "Check - Validation", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_checkpayment&controller=validation", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_checkpayment"}, {"key": "controller", "value": "validation"}]}}}
+          ]
+        },
+        {
+          "name": "ps_cashondelivery",
+          "item": [
+            {"name": "COD - Validation", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_cashondelivery&controller=validation", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_cashondelivery"}, {"key": "controller", "value": "validation"}]}}}
+          ]
+        },
+        {
+          "name": "psshipping",
+          "item": [
+            {"name": "Webhook - Order status update", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=psshipping&controller=webhookOrderStatus", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "psshipping"}, {"key": "controller", "value": "webhookOrderStatus"}]}}}
+          ]
+        },
+        {
+          "name": "ps_eventbus",
+          "item": [
+            {"name": "Health check", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_eventbus&controller=apiHealthCheck", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_eventbus"}, {"key": "controller", "value": "apiHealthCheck"}]}}},
+            {"name": "Shop content (sync)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_eventbus&controller=apiShopContent&shop_content=products&job_id=1&limit=10", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_eventbus"}, {"key": "controller", "value": "apiShopContent"}, {"key": "shop_content", "value": "products"}, {"key": "job_id", "value": "1"}, {"key": "limit", "value": "10"}]}}}
+          ]
+        },
+        {
+          "name": "ps_facebook",
+          "item": [
+            {"name": "Health check", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_facebook&controller=apiHealthCheck", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_facebook"}, {"key": "controller", "value": "apiHealthCheck"}]}}},
+            {"name": "Front AJAX", "request": {"method": "POST", "body": {"mode": "urlencoded", "urlencoded": [{"key": "action", "value": ""}]}, "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_facebook&controller=Ajax", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_facebook"}, {"key": "controller", "value": "Ajax"}]}}}
+          ]
+        },
+        {
+          "name": "ps_accounts",
+          "item": [
+            {"name": "API V2 - Shop proof", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_accounts&controller=apiV2ShopProof", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_accounts"}, {"key": "controller", "value": "apiV2ShopProof"}]}}},
+            {"name": "API V2 - Shop health check", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=ps_accounts&controller=apiV2ShopHealthCheck", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "ps_accounts"}, {"key": "controller", "value": "apiV2ShopHealthCheck"}]}}}
+          ]
+        },
+        {
+          "name": "klaviyopsautomation",
+          "item": [
+            {"name": "AJAX", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=klaviyopsautomation&controller=ajax", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "klaviyopsautomation"}, {"key": "controller", "value": "ajax"}]}}},
+            {"name": "Add to cart tracking", "request": {"method": "POST", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=klaviyopsautomation&controller=addToCart", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "klaviyopsautomation"}, {"key": "controller", "value": "addToCart"}]}}},
+            {"name": "Build reclaim cart link", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/index.php?fc=module&module=klaviyopsautomation&controller=buildReclaim&id_cart=1", "host": ["{{baseUrl}}"], "path": ["index.php"], "query": [{"key": "fc", "value": "module"}, {"key": "module", "value": "klaviyopsautomation"}, {"key": "controller", "value": "buildReclaim"}, {"key": "id_cart", "value": "1"}]}}}
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. Admin Back Office",
+      "description": "Pages d'administration. Le dossier admin a été renommé pour la sécurité (`admin97512pee6coofvkvbtu`). Toutes les routes nécessitent une session employé valide.\n\nLes contrôleurs admin sont accessibles via `/{{adminDir}}/index.php?controller=AdminXxx&...&token=...`.",
+      "auth": {"type": "noauth"},
+      "item": [
+        {"name": "Admin login (page)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminLogin", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminLogin"}]}}},
+        {"name": "Admin login (POST)", "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/x-www-form-urlencoded"}], "body": {"mode": "urlencoded", "urlencoded": [{"key": "ajax", "value": "1"}, {"key": "controller", "value": "AdminLogin"}, {"key": "token", "value": ""}, {"key": "submitLogin", "value": "1"}, {"key": "passwd", "value": "admin_password"}, {"key": "email", "value": "admin@example.com"}]}, "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminLogin&ajax=1&action=login", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminLogin"}, {"key": "ajax", "value": "1"}, {"key": "action", "value": "login"}]}}},
+        {"name": "Dashboard", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminDashboard&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminDashboard"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Products list", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminProducts&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminProducts"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Carts list", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminCarts&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminCarts"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Cart rules", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminCartRules&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminCartRules"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Specific price rules", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminSpecificPriceRule&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminSpecificPriceRule"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Carriers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminCarriers&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminCarriers"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Carrier wizard", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminCarrierWizard&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminCarrierWizard"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Customer threads", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminCustomerThreads&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminCustomerThreads"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Returns", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminReturn&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminReturn"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Statuses", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminStatuses&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminStatuses"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Suppliers", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminSuppliers&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminSuppliers"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Stores", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminStores&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminStores"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Countries", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminCountries&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminCountries"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "States", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminStates&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminStates"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Tax rules groups", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminTaxRulesGroup&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminTaxRulesGroup"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Customer groups", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminGroups&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminGroups"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Genders / titles", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminGenders&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminGenders"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Attribute groups", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminAttributesGroups&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminAttributesGroups"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Features", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminFeatures&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminFeatures"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Tags", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminTags&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminTags"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Images", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminImages&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminImages"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Search", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminSearch&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminSearch"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Search configuration", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminSearchConf&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminSearchConf"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "SQL request manager", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminRequestSql&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminRequestSql"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Modules", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminModules&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminModules"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Module positions", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminModulesPositions&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminModulesPositions"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Quick accesses", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminQuickAccesses&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminQuickAccesses"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Tabs", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminTabs&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminTabs"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Translations", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminTranslations&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminTranslations"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Multishops - Shops", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminShop&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminShop"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Multishops - Shop groups", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminShopGroup&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminShopGroup"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Multishops - Shop URLs", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminShopUrl&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminShopUrl"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Profile permissions", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminAccess&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminAccess"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Stats", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminStats&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminStats"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "Import (CSV)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminImport&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminImport"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "PDF", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=AdminPdf&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "AdminPdf"}, {"key": "token", "value": "{{adminToken}}"}]}}},
+        {"name": "BoOrder (admin order create)", "request": {"method": "GET", "url": {"raw": "{{baseUrl}}/{{adminDir}}/index.php?controller=BoOrder&token={{adminToken}}", "host": ["{{baseUrl}}"], "path": ["{{adminDir}}", "index.php"], "query": [{"key": "controller", "value": "BoOrder"}, {"key": "token", "value": "{{adminToken}}"}]}}}
+      ]
+    }
+  ]
+}

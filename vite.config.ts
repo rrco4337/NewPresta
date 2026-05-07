@@ -20,6 +20,12 @@ export default defineConfig(({ mode }) => {
               proxyReq.setHeader('Authorization', auth);
             });
           }
+        },
+        // Proxy pour les endpoints d'authentification admin PrestaShop (BO)
+        [`/${env.VITE_ADMIN_DIR}`]: {
+          target: env.VITE_PRESTASHOP_URL,
+          changeOrigin: true,
+          cookieDomainRewrite: 'localhost',
         }
       }
     }

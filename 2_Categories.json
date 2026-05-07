@@ -1,0 +1,255 @@
+{
+  "info": {
+    "name": "📂 Categories API CRUD — PrestaShop",
+    "description": "CRUD complet sur les catégories + recherche multi-critères",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "basic",
+    "basic": [
+      {"key": "username", "value": "{{wsKey}}", "type": "string"},
+      {"key": "password", "value": "", "type": "string"}
+    ]
+  },
+  "variable": [
+    {"key": "baseUrl", "value": "http://127.0.0.1:8080"},
+    {"key": "adminDir", "value": "admin97512pee6coofvkvbtu"},
+    {"key": "wsKey", "value": "7Q4NKLRMB4FFXGEWRITAZ8EDZDP2RSKG"}
+  ],
+  "item": [
+    {
+      "name": "📂 CRUD DE BASE",
+      "item": [
+        {
+          "name": "List categories (toutes)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"]
+            }
+          }
+        },
+        {
+          "name": "Get category (par ID)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories/3",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "3"]
+            }
+          }
+        },
+        {
+          "name": "Get products of category",
+          "request": {
+            "method": "GET",
+            "description": "Récupère tous les produits d'une catégorie",
+            "url": {
+              "raw": "{{baseUrl}}/categories/3/products",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "3", "products"]
+            }
+          }
+        },
+        {
+          "name": "Create category",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/xml"}],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<prestashop xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n  <category>\n    <name>Nouvelle Catégorie</name>\n    <description>Description catégorie</description>\n    <active>1</active>\n    <id_parent>2</id_parent>\n  </category>\n</prestashop>"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/categories",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"]
+            }
+          }
+        },
+        {
+          "name": "Update category",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/xml"}],
+            "body": {
+              "mode": "raw",
+              "raw": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<prestashop xmlns:xlink=\"http://www.w3.org/1999/xlink\">\n  <category>\n    <id>3</id>\n    <name>Catégorie modifiée</name>\n    <active>1</active>\n  </category>\n</prestashop>"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/categories/3",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "3"]
+            }
+          }
+        },
+        {
+          "name": "Delete category",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/categories/3",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories", "3"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔍 RECHERCHE & FILTRES",
+      "item": [
+        {
+          "name": "Afficher tous les champs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [{"key": "display", "value": "full"}]
+            }
+          }
+        },
+        {
+          "name": "Afficher champs spécifiques",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?display=[id,name,active,id_parent,position,level_depth]",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [{"key": "display", "value": "[id,name,active,id_parent,position,level_depth]"}]
+            }
+          }
+        },
+        {
+          "name": "Filtrer — catégories actives",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?filter[active]=1&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "filter[active]", "value": "1"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filtrer — par catégorie parente",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?filter[id_parent]=2&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "filter[id_parent]", "value": "2"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filtrer — par nom",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?filter[name]=[Femme]&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "filter[name]", "value": "[Femme]"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Filtrer — par niveau de profondeur",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?filter[level_depth]=2&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "filter[level_depth]", "value": "2"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Trier par position croissante",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?sort=[position_ASC]&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "sort", "value": "[position_ASC]"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Trier par nom croissant",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?sort=[name_ASC]&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "sort", "value": "[name_ASC]"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Multi-filtres — actives + parent + tri position",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?filter[active]=1&filter[id_parent]=2&sort=[position_ASC]&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "filter[active]", "value": "1"},
+                {"key": "filter[id_parent]", "value": "2"},
+                {"key": "sort", "value": "[position_ASC]"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Pagination — page 2, limite 10",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/categories?limit=10&offset=10&display=full",
+              "host": ["{{baseUrl}}"],
+              "path": ["categories"],
+              "query": [
+                {"key": "limit", "value": "10"},
+                {"key": "offset", "value": "10"},
+                {"key": "display", "value": "full"}
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

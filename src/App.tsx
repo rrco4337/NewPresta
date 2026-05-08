@@ -1,9 +1,28 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import AppLayout from './components/AppLayout';
 import Login from './components/Login';
 import ProductList from './components/ProductList';
 import ProductCreate from './components/ProductCreate';
+
+// Résout le titre de page selon la route courante
+function resolvePageTitle(pathname: string): string {
+  if (pathname === '/') return 'Produits';
+  if (pathname === '/products/add') return 'Ajouter un produit';
+  if (pathname.startsWith('/products/')) return 'Modifier le produit';
+  return '';
+}
+
+// Layout wrapper qui lit l'URL pour passer le bon titre
+function LayoutWrapper({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return (
+    <AppLayout pageTitle={resolvePageTitle(location.pathname)}>
+      {children}
+    </AppLayout>
+  );
+}
 
 function App() {
   return (
@@ -13,12 +32,14 @@ function App() {
           {/* Route publique */}
           <Route path="/login" element={<Login />} />
 
-          {/* Routes protégées — accès refusé si non connecté */}
+          {/* Routes protégées — enveloppées dans le layout avec sidebar */}
           <Route
             path="/"
             element={
               <ProtectedRoute>
-                <ProductList />
+                <LayoutWrapper>
+                  <ProductList />
+                </LayoutWrapper>
               </ProtectedRoute>
             }
           />
@@ -26,7 +47,9 @@ function App() {
             path="/products/add"
             element={
               <ProtectedRoute>
-                <ProductCreate />
+                <LayoutWrapper>
+                  <ProductCreate />
+                </LayoutWrapper>
               </ProtectedRoute>
             }
           />
@@ -34,7 +57,9 @@ function App() {
             path="/products/:id"
             element={
               <ProtectedRoute>
-                <ProductCreate />
+                <LayoutWrapper>
+                  <ProductCreate />
+                </LayoutWrapper>
               </ProtectedRoute>
             }
           />

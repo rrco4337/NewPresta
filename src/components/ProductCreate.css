@@ -218,4 +218,154 @@
     margin: 20px 10px;
     padding: 20px;
   }
+
+
+  
+}
+
+
+/* ProductCreate.css - Ajoute à la fin */
+
+/* ========== ACCORDÉONS ========== */
+.accordion-section {
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.accordion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 16px;
+  transition: background 0.3s;
+}
+
+.accordion-header:hover {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b46a0 100%);
+}
+
+.accordion-icon {
+  font-size: 20px;
+  transition: transform 0.3s;
+}
+
+.accordion-icon.open {
+  transform: rotate(180deg);
+}
+
+.accordion-content {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.4s ease-out;
+  padding: 0 20px;
+}
+
+.accordion-content.open {
+  max-height: 2000px;
+  padding: 20px;
+  transition: max-height 0.6s ease-in;
+}
+
+/* ========== VALIDATION ========== */
+.form-group.error input,
+.form-group.error textarea,
+.form-group.error select {
+  border-color: #e53e3e;
+  background-color: #fff5f5;
+}
+
+.error-message {
+  color: #e53e3e;
+  font-size: 12px;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.error-message::before {
+  content: "⚠️";
+  font-size: 12px;
+}
+
+/* Indicateur de champ valide */
+.form-group.valid input,
+.form-group.valid textarea,
+.form-group.valid select {
+  border-color: #38a169;
+  background-color: #f0fff4;
+}
+
+.valid-indicator {
+  position: absolute;
+  right: 12px;
+  top: 38px;
+  color: #38a169;
+}
+
+/* ========== IMAGE UPLOAD ========== */
+.image-upload-area {
+  border: 2px dashed #cbd5e0;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s;
+  background: #f7fafc;
+}
+
+.image-upload-area:hover {
+  border-color: #667eea;
+  background: #edf2f7;
+}
+
+.image-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.image-preview-item {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 1;
+  background: #e2e8f0;
+}
+
+.image-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.remove-image-btn:hover {
+  background: #e53e3e;
 }

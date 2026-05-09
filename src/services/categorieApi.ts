@@ -10,6 +10,26 @@ const api: AxiosInstance = axios.create({
   }
 });
 
+function extractNameByLang(nameNode: any, langId: number = 1): string {
+  if (!nameNode) return '';
+  
+  // Si c'est déjà une string
+  if (typeof nameNode === 'string') return nameNode;
+  
+  // Si c'est un objet avec des languages
+  const languages = nameNode.language;
+  if (!languages) return '';
+  
+  // Chercher la langue spécifique
+  const langArray = Array.isArray(languages) ? languages : [languages];  const targetLang = langArray.find(lang => lang.id === langId || lang._id === langId);
+  
+  if (targetLang) {
+    return targetLang._cdata || targetLang._text || targetLang;
+  }
+  
+  // Fallback: première langue disponible
+  return langArray[0]?._cdata || langArray[0]?._text || langArray[0] || '';
+}
 // Parser XML (réutilisable)
 export function parseXMLToJSON(xmlString: string): any {
   const parser = new DOMParser();
@@ -54,7 +74,7 @@ export const categoryService = {
       const list = Array.isArray(categories) ? categories : [categories];
       return list.map((cat: any) => ({
         id: cat.id?.toString() || '',
-        name: cat.name?.language?._cdata || cat.name?.language || '',
+        name: extractNameByLang(cat.name),
         active: cat.active || '1'
       }));
     } catch (error) {

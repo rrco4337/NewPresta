@@ -18,7 +18,7 @@ export const CreateProductData = () => {
         const [cats, mans, taxesData] = await Promise.all([
           categoryService.getAll(),
           manufacturerService.getAll(),
-          taxService.getAll()
+          taxService.getAllTaxes()
         ]);
         setCategories(cats);
         setManufacturers(mans);

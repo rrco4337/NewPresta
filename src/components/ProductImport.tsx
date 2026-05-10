@@ -1,6 +1,8 @@
 import React, { useRef, useState } from 'react';
 import { parseCSV, importProducts } from '../services/csvImportService';
 import type { CsvRow, ImportResult } from '../services/csvImportService';
+import { cleanProducts } from '../services/otherImportService';
+import type { CleanResult } from '../services/otherImportService';
 import './ProductImport.css';
 
 // ── États de la page ──────────────────────────────────────────────────────────
@@ -15,6 +17,11 @@ const ProductImport: React.FC = () => {
   const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const [results, setResults] = useState<ImportResult[]>([]);
   const [dragOver, setDragOver] = useState(false);
+
+  type CleanStatus = 'idle' | 'running' | 'done';
+  const [cleanStatus,   setCleanStatus]   = useState<CleanStatus>('idle');
+  const [cleanProgress, setCleanProgress] = useState({ done: 0, total: 0 });
+  const [cleanResult,   setCleanResult]   = useState<CleanResult | null>(null);
 
   // ── Sélection / drag-drop du fichier ─────────────────────────────────────
   function handleFile(selectedFile: File) {
@@ -66,6 +73,24 @@ const ProductImport: React.FC = () => {
 
     setResults(importResults);
     setStep('done');
+  }
+
+  // ── Nettoyage produits ────────────────────────────────────────────────────
+  async function handleCleanProducts() {
+    const confirmed = window.confirm(
+      'Supprimer TOUS les produits de la base de données ?\n\nCette action est irréversible.'
+    );
+    if (!confirmed) return;
+    setCleanStatus('running');
+    setCleanProgress({ done: 0, total: 0 });
+    setCleanResult(null);
+    try {
+      const result = await cleanProducts((done, total) => setCleanProgress({ done, total }));
+      setCleanResult(result);
+    } catch {
+      setCleanResult({ total: 0, deleted: 0, errors: 1 });
+    }
+    setCleanStatus('done');
   }
 
   // ── Réinitialisation ──────────────────────────────────────────────────────
@@ -246,6 +271,55 @@ const ProductImport: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ── ZONE DE NETTOYAGE PRODUITS ── */}
+      <div className="import-danger-zone">
+        <div className="import-danger-header">
+          <span className="import-danger-title">Zone de nettoyage — Produits</span>
+          <span className="import-danger-warning">
+            Supprime <strong>tous les produits</strong> de la base via l'API PrestaShop.
+            Cette action est irréversible.
+          </span>
+        </div>
+
+        {cleanStatus === 'idle' && (
+          <button className="btn btn-danger" onClick={handleCleanProducts}>
+            Nettoyer les produits
+          </button>
+        )}
+
+        {cleanStatus === 'running' && (
+          <div className="import-progress-block" style={{ padding: '20px' }}>
+            <p className="import-progress-label">
+              Suppression… {cleanProgress.done} / {cleanProgress.total}
+            </p>
+            <div className="import-progress-bar">
+              <div
+                className="import-progress-fill"
+                style={{
+                  width: cleanProgress.total > 0
+                    ? `${Math.round((cleanProgress.done / cleanProgress.total) * 100)}%`
+                    : '0%',
+                  background: '#ef4444',
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {cleanStatus === 'done' && cleanResult && (
+          <div className="import-clean-result">
+            <span className="import-clean-ok">{cleanResult.deleted} supprimé{cleanResult.deleted > 1 ? 's' : ''}</span>
+            {cleanResult.errors > 0 && (
+              <span className="import-clean-err">{cleanResult.errors} erreur{cleanResult.errors > 1 ? 's' : ''}</span>
+            )}
+            <button className="btn btn-secondary" style={{ marginLeft: 'auto' }}
+              onClick={() => { setCleanStatus('idle'); setCleanResult(null); }}>
+              Réinitialiser
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

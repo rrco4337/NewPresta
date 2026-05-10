@@ -256,3 +256,116 @@
 }
 
 .btn-secondary:hover { background: #e2e8f0; }
+
+/* ── Sélecteur de type (CatalogImport) ───────────────────────────────────── */
+.import-type-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.import-type-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.import-type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.import-type-tab {
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.import-type-tab:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+
+.import-type-tab--active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.import-type-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.import-type-hint code {
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.import-cell-truncate {
+  display: inline-block;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* ── Zone de nettoyage (danger) ──────────────────────────────────────────── */
+.import-danger-zone {
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff5f5;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.import-danger-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.import-danger-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b91c1c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.import-danger-warning {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: #fff;
+  align-self: flex-start;
+}
+
+.btn-danger:hover { background: #dc2626; }
+
+.import-clean-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.import-clean-ok  { color: #16a34a; font-weight: 600; }
+.import-clean-err { color: #dc2626; font-weight: 600; }

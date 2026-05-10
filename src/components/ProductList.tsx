@@ -4,6 +4,7 @@ import { productService } from '../services/produitApi';
 import type { Product } from '../services/produitApi';
 import { useAuth } from '../contexts/AuthContext';
 import './ProductList.css';
+import CSVImport from '../components/CSVImport';
 
 interface Filters {
   name: string;
@@ -20,6 +21,7 @@ const ProductList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [showCSVImport, setShowCSVImport] = useState(false);
   const [filters, setFilters] = useState<Filters>({
     name: '',
     priceMin: '',
@@ -90,12 +92,17 @@ const ProductList: React.FC = () => {
     }
 
     // Filtrer par prix
-    if (filters.priceMin !== '') {
-      filtered = filtered.filter((product) => product.price >= filters.priceMin);
-    }
-    if (filters.priceMax !== '') {
-      filtered = filtered.filter((product) => product.price <= filters.priceMax);
-    }
+        if (filters.priceMin !== '') {
+        filtered = filtered.filter(
+          (product) => product.price >= Number(filters.priceMin)
+        );
+      }
+
+      if (filters.priceMax !== '') {
+        filtered = filtered.filter(
+          (product) => product.price <= Number(filters.priceMax)
+        );
+      }
 
     // Filtrer par statut
     if (filters.statusFilter === 'active') {
@@ -196,6 +203,20 @@ const ProductList: React.FC = () => {
             ➕ Ajouter un produit
           </button>
 
+
+
+          <button onClick={() => setShowCSVImport(true)} className="btn-import-csv">
+              📄 Importer Produit
+            </button>
+            {showCSVImport && (
+              <CSVImport 
+                onClose={() => setShowCSVImport(false)}
+                onSuccess={() => {
+                  // Rafraîchir la liste des produits
+                  loadProducts();
+                }}
+              />
+            )}
           <button onClick={handleLogout} className="logout-button">
             Déconnexion
           </button>

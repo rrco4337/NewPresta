@@ -1,44 +1,46 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productService } from '../services/produitApi';
-import type { Product } from '../services/produitApi';
+import type { Product, ProductFilters } from '../services/produitApi';
 import './ProductList.css';
 
 interface Filters {
+  idMin: string;
+  idMax: string;
   name: string;
-  priceMin: number | '';
-  priceMax: number | '';
-  statusFilter: 'all' | 'active' | 'inactive';
-  stockFilter: 'all' | 'inStock' | 'outOfStock';
-  sortBy: 'name' | 'price' | 'reference';
-  sortOrder: 'asc' | 'desc';
+  reference: string;
+  category: string;
+  priceMin: string;
+  priceMax: string;
+  quantityMin: string;
+  quantityMax: string;
+  status: 'all' | 'active' | 'inactive';
 }
 
 const ProductList: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<Filters>({
+    idMin: '',
+    idMax: '',
     name: '',
+    reference: '',
+    category: '',
     priceMin: '',
     priceMax: '',
-    statusFilter: 'all',
-    stockFilter: 'all',
-    sortBy: 'name',
-    sortOrder: 'asc'
+    quantityMin: '',
+    quantityMax: '',
+    status: 'all',
   });
+  const [appliedFilters, setAppliedFilters] = useState<ProductFilters>({});
 
   const navigate = useNavigate();
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
-
-  const loadProducts = async () => {
+  const loadProducts = async (filtersToApply: ProductFilters) => {
     try {
       setLoading(true);
-      const productsData = await productService.getAllProducts();
+      const productsData = await productService.getAllProducts(filtersToApply);
       setProducts(productsData);
       setError(null);
     } catch (err) {
@@ -52,11 +54,40 @@ const ProductList: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    loadProducts({});
+  }, []);
+
+  const toNumber = (value: string): number | undefined => {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  };
+
+  const toText = (value: string): string | undefined => {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+  };
+
+  const buildFilterPayload = (): ProductFilters => ({
+    idMin: toNumber(filters.idMin),
+    idMax: toNumber(filters.idMax),
+    name: toText(filters.name),
+    reference: toText(filters.reference),
+    categoryId: toNumber(filters.category),
+    priceMin: toNumber(filters.priceMin),
+    priceMax: toNumber(filters.priceMax),
+    quantityMin: toNumber(filters.quantityMin),
+    quantityMax: toNumber(filters.quantityMax),
+    active: filters.status === 'all' ? undefined : filters.status === 'active',
+  });
+
   const handleDeleteProduct = async (productId: string) => {
     if (window.confirm("Êtes-vous sûr de vouloir supprimer ce produit ?")) {
       try {
         await productService.deleteProduct(productId);
-        loadProducts();
+        loadProducts(appliedFilters);
       } catch (error) {
         setError("Erreur lors de la suppression du produit.");
         console.error(error);
@@ -71,84 +102,11 @@ const ProductList: React.FC = () => {
     }).format(product.price);
   };
 
-  const applyFilters = (productsToFilter: Product[]): Product[] => {
-    let filtered = productsToFilter;
-
-    // Filtrer par nom
-    if (filters.name) {
-      filtered = filtered.filter((product) =>
-        product.name.toLowerCase().includes(filters.name.toLowerCase()) ||
-        product.reference.toLowerCase().includes(filters.name.toLowerCase())
-      );
-    }
-
-    // Filtrer par prix
-    if (filters.priceMin !== '') {
-      const min = filters.priceMin as number;
-      filtered = filtered.filter((product) => product.price >= min);
-    }
-    if (filters.priceMax !== '') {
-      const max = filters.priceMax as number;
-      filtered = filtered.filter((product) => product.price <= max);
-    }
-
-    // Filtrer par statut
-    if (filters.statusFilter === 'active') {
-      filtered = filtered.filter((product) => product.active);
-    } else if (filters.statusFilter === 'inactive') {
-      filtered = filtered.filter((product) => !product.active);
-    }
-
-    // Filtrer par stock
-    if (filters.stockFilter === 'inStock') {
-      filtered = filtered.filter((product) => product.quantity > 0);
-    } else if (filters.stockFilter === 'outOfStock') {
-      filtered = filtered.filter((product) => product.quantity === 0);
-    }
-
-    // Appliquer le tri
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      
-      switch (filters.sortBy) {
-        case 'name':
-          comparison = a.name.localeCompare(b.name);
-          break;
-        case 'price':
-          comparison = a.price - b.price;
-          break;
-        case 'reference':
-          comparison = a.reference.localeCompare(b.reference);
-          break;
-        default:
-          comparison = 0;
-      }
-
-      return filters.sortOrder === 'asc' ? comparison : -comparison;
-    });
-
-    return filtered;
-  };
-
-  const filteredProducts = applyFilters(products);
-
-  const handleFilterChange = (key: keyof Filters, value: any) => {
-    setFilters((prev) => ({
-      ...prev,
-      [key]: value
-    }));
-  };
-
-  const resetFilters = () => {
-    setFilters({
-      name: '',
-      priceMin: '',
-      priceMax: '',
-      statusFilter: 'all',
-      stockFilter: 'all',
-      sortBy: 'name',
-      sortOrder: 'asc'
-    });
+  const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const payload = buildFilterPayload();
+    setAppliedFilters(payload);
+    loadProducts(payload);
   };
 
   const handleAddProduct = () => {
@@ -166,22 +124,22 @@ const ProductList: React.FC = () => {
 
   if (error) {
     return (
-      <div className="error-container">
-        <p className="error-message">{error}</p>
-        <button onClick={loadProducts} className="retry-button">
-          Réessayer
-        </button>
-      </div>
-    );
+        <div className="error-container">
+          <p className="error-message">{error}</p>
+          <button onClick={() => loadProducts(appliedFilters)} className="retry-button">
+            Réessayer
+          </button>
+        </div>
+      );
   }
 
-  return (
-    <div className="product-list-container">
+    return (
+      <div className="product-list-container">
       <div className="products-header">
-        <h1>Liste des Produits ({filteredProducts.length})</h1>
+        <h1>Liste des Produits ({products.length})</h1>
 
         <div className="header-actions">
-          <button onClick={loadProducts} className="refresh-button">
+          <button onClick={() => loadProducts(appliedFilters)} className="refresh-button">
             Actualiser
           </button>
 
@@ -191,132 +149,125 @@ const ProductList: React.FC = () => {
         </div>
       </div>
 
-      <div className="search-bar">
-        <input
-          type="text"
-          placeholder="Rechercher un produit..."
-          value={filters.name}
-          onChange={(e) => handleFilterChange('name', e.target.value)}
-          className="search-input"
-        />
-        <span className="search-icon">🔍</span>
-      </div>
-
-      {/* Bouton pour afficher/masquer les filtres */}
-      <button
-        onClick={() => setShowFilters(!showFilters)}
-        className="filters-toggle"
-      >
-        {showFilters ? '▼' : '▶'} 🔧 Filtres avancés
-      </button>
-
-      {/* Panneau de filtres */}
-      {showFilters && (
-        <div className="filters-panel">
-          <div className="filters-grid">
-            {/* Filtres de prix */}
-            <div className="filter-group">
-              <label htmlFor="priceMin">Prix minimum (€)</label>
+      <form className="product-filters" onSubmit={handleSearch}>
+        <div className="product-filters-row">
+          <div className="filter-field filter-field--range">
+            <label>ID</label>
+            <div className="filter-range">
               <input
-                id="priceMin"
                 type="number"
-                min="0"
-                step="0.01"
-                placeholder="Min"
-                value={filters.priceMin}
-                onChange={(e) => handleFilterChange('priceMin', e.target.value ? parseFloat(e.target.value) : '')}
+                placeholder="Min."
+                value={filters.idMin}
+                onChange={(e) => setFilters((prev) => ({ ...prev, idMin: e.target.value }))}
               />
-            </div>
-
-            <div className="filter-group">
-              <label htmlFor="priceMax">Prix maximum (€)</label>
               <input
-                id="priceMax"
                 type="number"
-                min="0"
-                step="0.01"
-                placeholder="Max"
-                value={filters.priceMax}
-                onChange={(e) => handleFilterChange('priceMax', e.target.value ? parseFloat(e.target.value) : '')}
+                placeholder="Max."
+                value={filters.idMax}
+                onChange={(e) => setFilters((prev) => ({ ...prev, idMax: e.target.value }))}
               />
-            </div>
-
-            {/* Filtre de statut */}
-            <div className="filter-group">
-              <label htmlFor="statusFilter">Statut</label>
-              <select
-                id="statusFilter"
-                value={filters.statusFilter}
-                onChange={(e) => handleFilterChange('statusFilter', e.target.value)}
-              >
-                <option value="all">Tous les statuts</option>
-                <option value="active">✓ Actifs</option>
-                <option value="inactive">✗ Inactifs</option>
-              </select>
-            </div>
-
-            {/* Filtre de stock */}
-            <div className="filter-group">
-              <label htmlFor="stockFilter">Stock</label>
-              <select
-                id="stockFilter"
-                value={filters.stockFilter}
-                onChange={(e) => handleFilterChange('stockFilter', e.target.value)}
-              >
-                <option value="all">Tous</option>
-                <option value="inStock">📦 En stock</option>
-                <option value="outOfStock">❌ Rupture</option>
-              </select>
-            </div>
-
-            {/* Tri */}
-            <div className="filter-group">
-              <label htmlFor="sortBy">Trier par</label>
-              <select
-                id="sortBy"
-                value={filters.sortBy}
-                onChange={(e) => handleFilterChange('sortBy', e.target.value)}
-              >
-                <option value="name">Nom</option>
-                <option value="price">Prix</option>
-                <option value="reference">Référence</option>
-              </select>
-            </div>
-
-            {/* Ordre de tri */}
-            <div className="filter-group">
-              <label htmlFor="sortOrder">Ordre</label>
-              <select
-                id="sortOrder"
-                value={filters.sortOrder}
-                onChange={(e) => handleFilterChange('sortOrder', e.target.value)}
-              >
-                <option value="asc">Croissant ↑</option>
-                <option value="desc">Décroissant ↓</option>
-              </select>
             </div>
           </div>
 
-          {/* Bouton pour réinitialiser les filtres */}
-          <button onClick={resetFilters} className="reset-filters-btn">
-            🔄 Réinitialiser les filtres
-          </button>
+          <div className="filter-field">
+            <label>Nom</label>
+            <input
+              type="text"
+              placeholder="Chercher un nom"
+              value={filters.name}
+              onChange={(e) => setFilters((prev) => ({ ...prev, name: e.target.value }))}
+            />
+          </div>
+
+          <div className="filter-field">
+            <label>Référence</label>
+            <input
+              type="text"
+              placeholder="Chercher une référence"
+              value={filters.reference}
+              onChange={(e) => setFilters((prev) => ({ ...prev, reference: e.target.value }))}
+            />
+          </div>
+
+          <div className="filter-field">
+            <label>Catégorie</label>
+            <input
+              type="number"
+              placeholder="ID catégorie"
+              value={filters.category}
+              onChange={(e) => setFilters((prev) => ({ ...prev, category: e.target.value }))}
+            />
+          </div>
+
+          <div className="filter-field filter-field--range">
+            <label>Montant HT</label>
+            <div className="filter-range">
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Min."
+                value={filters.priceMin}
+                onChange={(e) => setFilters((prev) => ({ ...prev, priceMin: e.target.value }))}
+              />
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Max."
+                value={filters.priceMax}
+                onChange={(e) => setFilters((prev) => ({ ...prev, priceMax: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="filter-field filter-field--range">
+            <label>Quantité</label>
+            <div className="filter-range">
+              <input
+                type="number"
+                min="0"
+                placeholder="Min."
+                value={filters.quantityMin}
+                onChange={(e) => setFilters((prev) => ({ ...prev, quantityMin: e.target.value }))}
+              />
+              <input
+                type="number"
+                min="0"
+                placeholder="Max."
+                value={filters.quantityMax}
+                onChange={(e) => setFilters((prev) => ({ ...prev, quantityMax: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="filter-field">
+            <label>État</label>
+            <select
+              value={filters.status}
+              onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value as Filters['status'] }))}
+            >
+              <option value="all">Tous</option>
+              <option value="active">Actif</option>
+              <option value="inactive">Inactif</option>
+            </select>
+          </div>
+
+          <div className="filter-actions">
+            <button type="submit" className="filter-search-btn">
+              🔍 Rechercher
+            </button>
+          </div>
         </div>
-      )}
+      </form>
 
       <div className="stats">
-        <p>
-          {filteredProducts.length} produit(s) trouvé(s)
-          {filters.name && ` pour "${filters.name}"`}
-          {(filters.priceMin !== '' || filters.priceMax !== '') && ` • Prix: ${filters.priceMin || '0'}€ - ${filters.priceMax || '∞'}€`}
-          {filters.statusFilter !== 'all' && ` • ${filters.statusFilter === 'active' ? 'Actifs' : 'Inactifs'}`}
-          {filters.stockFilter !== 'all' && ` • ${filters.stockFilter === 'inStock' ? 'En stock' : 'Rupture'}`}
-        </p>
+        <p>{products.length} produit(s) trouvé(s)</p>
       </div>
 
-      {filteredProducts.length > 0 ? (
+      {products.length > 0 ? (
         <div className="products-grid">
-          {filteredProducts.map((product) => (
+          {products.map((product) => (
             <div key={product.id} className="product-card">
               <div className="product-image-wrapper">
                 {product.imageUrl ? (

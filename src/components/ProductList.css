@@ -66,6 +66,87 @@
 /* ================================================================
    SEARCH & FILTERS TOOLBAR
    ================================================================ */
+.product-filters {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+}
+
+.product-filters-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.filter-field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b7280;
+}
+
+.filter-field input,
+.filter-field select {
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+  font-size: 0.875rem;
+  background: #fafafa;
+  color: #111827;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.filter-field input:focus,
+.filter-field select:focus {
+  outline: none;
+  border-color: #df0067;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(223, 0, 103, 0.1);
+}
+
+.filter-range {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-range input {
+  flex: 1;
+}
+
+.filter-actions {
+  display: flex;
+  align-items: end;
+}
+
+.filter-search-btn {
+  width: 100%;
+  padding: 9px 14px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  background: #f3f4f6;
+  color: #374151;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.filter-search-btn:hover {
+  background: #e5e7eb;
+  color: #111827;
+  border-color: #d1d5db;
+}
+
 .search-bar {
   position: relative;
   margin-bottom: 16px;
@@ -459,6 +540,10 @@
   .products-header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .product-filters-row {
+    grid-template-columns: 1fr;
   }
 
   .products-grid {

@@ -99,6 +99,16 @@ const navModules: NavModule[] = [
       { label: 'Import CSV',         path: '/products/import' },
     ],
   },
+  {
+    label: 'Import CSV',
+    path: '/import',
+    icon: <IconChart />,
+    section: 'Catalogue',
+    children: [
+      { label: 'Import produits',   path: '/products/import' },
+      { label: 'Import catalogue',  path: '/import' },
+    ],
+  },
   { label: 'Commandes',    path: '/commandes', icon: <IconCart />,    disabled: true, section: 'Ventes' },
   { label: 'Clients',      path: '/clients',   icon: <IconUsers />,   disabled: true, section: 'Ventes' },
   { label: 'Modules',      path: '/modules',   icon: <IconPuzzle />,  disabled: true, section: 'Configuration' },

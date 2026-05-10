@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import './AppLayout.css';
 
-// ── Icônes SVG inline (pas de dépendance externe) ──────────────────────────
+// ── Icônes SVG inline ───────────────────────────────────────────────────────
 const IconGrid = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -57,8 +57,23 @@ const IconMenu = () => (
     <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
   </svg>
 );
+const IconChevron = ({ open }: { open: boolean }) => (
+  <svg
+    width="14" height="14" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    style={{ transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}
+  >
+    <polyline points="9 18 15 12 9 6"/>
+  </svg>
+);
 
-// ── Modules de navigation ───────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────
+interface NavSubItem {
+  label: string;
+  path: string;
+  end?: boolean;
+}
+
 interface NavModule {
   label: string;
   path: string;
@@ -66,19 +81,43 @@ interface NavModule {
   end?: boolean;
   disabled?: boolean;
   section?: string;
+  children?: NavSubItem[];
 }
 
+// ── Navigation ───────────────────────────────────────────────────────────────
 const navModules: NavModule[] = [
   { label: 'Tableau de bord', path: '/dashboard', icon: <IconGrid />, disabled: true, section: 'Principal' },
-  { label: 'Produits',        path: '/',           icon: <IconBox />,  end: true,  section: 'Catalogue' },
-  { label: 'Commandes',       path: '/commandes',  icon: <IconCart />, disabled: true, section: 'Ventes' },
-  { label: 'Clients',         path: '/clients',    icon: <IconUsers />, disabled: true, section: 'Ventes' },
-  { label: 'Modules',         path: '/modules',    icon: <IconPuzzle />, disabled: true, section: 'Configuration' },
-  { label: 'Statistiques',    path: '/stats',      icon: <IconChart />, disabled: true, section: 'Configuration' },
-  { label: 'Paramètres',      path: '/settings',   icon: <IconSettings />, disabled: true, section: 'Configuration' },
+  {
+    label: 'Produits',
+    path: '/',
+    icon: <IconBox />,
+    end: true,
+    section: 'Catalogue',
+    children: [
+      { label: 'Liste des produits', path: '/',                 end: true },
+      { label: 'Ajouter un produit', path: '/products/add' },
+      { label: 'Import CSV',         path: '/products/import' },
+    ],
+  },
+  { label: 'Commandes',    path: '/commandes', icon: <IconCart />,    disabled: true, section: 'Ventes' },
+  { label: 'Clients',      path: '/clients',   icon: <IconUsers />,   disabled: true, section: 'Ventes' },
+  { label: 'Modules',      path: '/modules',   icon: <IconPuzzle />,  disabled: true, section: 'Configuration' },
+  { label: 'Statistiques', path: '/stats',     icon: <IconChart />,   disabled: true, section: 'Configuration' },
+  { label: 'Paramètres',   path: '/settings',  icon: <IconSettings />,disabled: true, section: 'Configuration' },
 ];
 
-// ── Composant principal ─────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function isModuleActive(mod: NavModule, pathname: string): boolean {
+  if (mod.children) {
+    return mod.children.some((child) =>
+      child.end ? pathname === child.path : pathname.startsWith(child.path)
+    );
+  }
+  return mod.end ? pathname === mod.path : pathname.startsWith(mod.path);
+}
+
+// ── Composant principal ──────────────────────────────────────────────────────
 interface AppLayoutProps {
   children: React.ReactNode;
   pageTitle?: string;
@@ -87,14 +126,40 @@ interface AppLayoutProps {
 const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+
+  // Groupes ouverts — initialisés avec les groupes actifs selon la route courante
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    const open = new Set<string>();
+    for (const mod of navModules) {
+      if (mod.children && isModuleActive(mod, pathname)) open.add(mod.label);
+    }
+    return open;
+  });
+
+  // Auto-ouvre le groupe parent lors d'une navigation vers un sous-item
+  useEffect(() => {
+    for (const mod of navModules) {
+      if (mod.children && isModuleActive(mod, pathname)) {
+        setOpenGroups((prev) => new Set([...prev, mod.label]));
+      }
+    }
+  }, [pathname]);
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      next.has(label) ? next.delete(label) : next.add(label);
+      return next;
+    });
+  };
 
   const handleLogout = async () => {
     await logout();
     navigate('/login');
   };
 
-  // Regroupe les modules par section pour l'affichage
   const sections = navModules.reduce<Record<string, NavModule[]>>((acc, mod) => {
     const s = mod.section ?? 'Autre';
     if (!acc[s]) acc[s] = [];
@@ -117,28 +182,70 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
           {Object.entries(sections).map(([section, items]) => (
             <div key={section} className="nav-section">
               {!collapsed && <span className="nav-section-label">{section}</span>}
-              {items.map((mod) =>
-                mod.disabled ? (
-                  <span key={mod.label} className="nav-item nav-item--disabled" title={mod.label}>
-                    <span className="nav-item-icon">{mod.icon}</span>
-                    {!collapsed && <span className="nav-item-label">{mod.label}</span>}
-                    {!collapsed && <span className="nav-badge-soon">Bientôt</span>}
-                  </span>
-                ) : (
+
+              {items.map((mod) => {
+                if (mod.disabled) {
+                  return (
+                    <span key={mod.label} className="nav-item nav-item--disabled" title={mod.label}>
+                      <span className="nav-item-icon">{mod.icon}</span>
+                      {!collapsed && <span className="nav-item-label">{mod.label}</span>}
+                      {!collapsed && <span className="nav-badge-soon">Bientôt</span>}
+                    </span>
+                  );
+                }
+
+                const active = isModuleActive(mod, pathname);
+
+                if (mod.children) {
+                  const isOpen = openGroups.has(mod.label);
+                  return (
+                    <div key={mod.label} className="nav-group">
+                      {/* Parent — bouton toggle (rétractable) */}
+                      <button
+                        className={`nav-item nav-item--parent${active ? ' nav-item--active' : ''}`}
+                        onClick={() => toggleGroup(mod.label)}
+                        title={mod.label}
+                      >
+                        <span className="nav-item-icon">{mod.icon}</span>
+                        {!collapsed && <span className="nav-item-label">{mod.label}</span>}
+                        {!collapsed && <IconChevron open={isOpen} />}
+                      </button>
+
+                      {/* Sous-menu — visible quand groupe ouvert et sidebar non réduite */}
+                      {isOpen && !collapsed && (
+                        <div className="nav-submenu">
+                          {mod.children.map((child) => (
+                            <NavLink
+                              key={child.path}
+                              to={child.path}
+                              end={child.end}
+                              className={({ isActive }) =>
+                                `nav-subitem${isActive ? ' nav-subitem--active' : ''}`
+                              }
+                            >
+                              <span className="nav-subitem-dot" />
+                              {child.label}
+                            </NavLink>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
                   <NavLink
                     key={mod.label}
                     to={mod.path}
                     end={mod.end}
                     title={mod.label}
-                    className={({ isActive }) =>
-                      `nav-item${isActive ? ' nav-item--active' : ''}`
-                    }
+                    className={({ isActive }) => `nav-item${isActive ? ' nav-item--active' : ''}`}
                   >
                     <span className="nav-item-icon">{mod.icon}</span>
                     {!collapsed && <span className="nav-item-label">{mod.label}</span>}
                   </NavLink>
-                )
-              )}
+                );
+              })}
             </div>
           ))}
         </nav>

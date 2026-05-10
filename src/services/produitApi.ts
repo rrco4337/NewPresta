@@ -18,6 +18,7 @@ export interface Product {
   meta_title: string;
   id_category_default: number;
   id_tax_rules_group: number;
+  imageUrl?: string;
 }
 
 // ==========================================
@@ -43,21 +44,30 @@ const PrestashopMapper = {
     return target._cdata || target._text || (typeof target === 'string' ? target : '');
   },
 
-  mapToFrontend: (p: any): Product => ({
-    id: p.id?.toString() || '',
-    name: PrestashopMapper.getLangValue(p.name),
-    reference: p.reference || '',
-    ean13: p.ean13 || '',
-    price: parseFloat(p.price || '0'),
-    wholesale_price: parseFloat(p.wholesale_price || '0'),
-    active: p.active === '1',
-    quantity: 0, 
-    description: PrestashopMapper.getLangValue(p.description),
-    description_short: PrestashopMapper.getLangValue(p.description_short),
-    meta_title: PrestashopMapper.getLangValue(p.meta_title),
-    id_category_default: parseInt(p.id_category_default || '2'),
-    id_tax_rules_group: parseInt(p.id_tax_rules_group || '1')
-  }),
+  mapToFrontend: (p: any): Product => {
+    const id = p.id?.toString() || '';
+    const imageAssoc = p.associations?.images?.image;
+    const firstImage = Array.isArray(imageAssoc) ? imageAssoc[0] : imageAssoc;
+    const imageId = firstImage?.id;
+    const imageUrl = id && imageId ? `/api/images/products/${id}/${imageId}` : undefined;
+
+    return {
+      id,
+      name: PrestashopMapper.getLangValue(p.name),
+      reference: p.reference || '',
+      ean13: p.ean13 || '',
+      price: parseFloat(p.price || '0'),
+      wholesale_price: parseFloat(p.wholesale_price || '0'),
+      active: p.active === '1',
+      quantity: 0,
+      description: PrestashopMapper.getLangValue(p.description),
+      description_short: PrestashopMapper.getLangValue(p.description_short),
+      meta_title: PrestashopMapper.getLangValue(p.meta_title),
+      id_category_default: parseInt(p.id_category_default || '2'),
+      id_tax_rules_group: parseInt(p.id_tax_rules_group || '1'),
+      imageUrl,
+    };
+  },
 
  // Dans PrestashopMapper (produitApi.ts)
 buildXml: (product: Partial<Product>): string => {

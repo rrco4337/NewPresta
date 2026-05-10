@@ -5,11 +5,13 @@ import AppLayout from './components/AppLayout';
 import Login from './components/Login';
 import ProductList from './components/ProductList';
 import ProductCreate from './components/ProductCreate';
+import ProductImport from './components/ProductImport';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
   if (pathname === '/') return 'Produits';
   if (pathname === '/products/add') return 'Ajouter un produit';
+  if (pathname === '/products/import') return 'Import CSV';
   if (pathname.startsWith('/products/')) return 'Modifier le produit';
   return '';
 }
@@ -49,6 +51,16 @@ function App() {
               <ProtectedRoute>
                 <LayoutWrapper>
                   <ProductCreate />
+                </LayoutWrapper>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/products/import"
+            element={
+              <ProtectedRoute>
+                <LayoutWrapper>
+                  <ProductImport />
                 </LayoutWrapper>
               </ProtectedRoute>
             }

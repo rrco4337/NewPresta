@@ -4,6 +4,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Login from './components/Login';
 import ProductList from './components/ProductList';
 import ProductCreate from './components/ProductCreate';
+import CustomerList from './components/CustomerList';
+import CustomerCreate from './components/CustomerCreate';
 
 function App() {
   return (
@@ -35,6 +37,30 @@ function App() {
             element={
               <ProtectedRoute>
                 <ProductCreate />
+              </ProtectedRoute>
+            }
+          />
+            <Route
+            path="/customers"
+            element={
+              <ProtectedRoute>
+                <CustomerList />
+              </ProtectedRoute>
+            }
+          />
+           <Route
+            path="/customers/add"
+            element={
+              <ProtectedRoute>
+                <CustomerCreate />
+              </ProtectedRoute>
+            }
+          />
+            <Route
+            path="/customers/:id"
+            element={
+              <ProtectedRoute>
+                <CustomerCreate />
               </ProtectedRoute>
             }
           />

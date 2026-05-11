@@ -569,12 +569,21 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
   }).filter((it) => it.reference);
 }
 
-function mapEtatToStatus(etat: string): LocalOrderStatus {
+function mapEtatToStatus(etat: string): string {
   const e = etat.toLowerCase();
-  if (e.includes('accept') || e.includes('effectu')) return 'paid';
-  if (e.includes('erreur') || e.includes('chec'))    return 'error';
-  if (e.includes('annul'))                            return 'cancelled';
-  return 'pending';
+  
+  // PS_OS_PAYMENT (2) - Paiement accepté
+  if (e.includes('accept') || e.includes('accepté') || e.includes('payé')) return '2';
+  
+  // PS_OS_ERROR (8) - Erreur de paiement
+  if (e.includes('erreur') || e.includes('echec') || e.includes('échec')) return '8';
+  
+  // PS_OS_CANCELED (6) - Annulé
+  if (e.includes('annul')) return '6';
+  
+  // PS_OS_PREPARATION (3) - En attente / préparation (statut par défaut)
+  // Correspond à "en attente paiement à la livraison"
+  return '3';
 }
 
 interface ImportCustomer {
@@ -710,6 +719,8 @@ export async function importFichier3(
       const checkoutItems = await buildCheckoutItems(items);
       if (checkoutItems.length === 0) throw new Error('Aucun achat valide dans la ligne');
 
+      const status = mapEtatToStatus(etat ?? '');
+      
       const cartId = await createPSCart(customer.id, addressId, carrierId, checkoutItems);
       const orderId = await createPSOrder({
         customerId: customer.id,
@@ -721,7 +732,8 @@ export async function importFichier3(
       });
       await updateStockAfterOrder(checkoutItems);
 
-      const status = mapEtatToStatus(etat ?? '');
+      await updateOrderStatus(orderId, status);
+      
       const totalTtc = checkoutItems.reduce((sum, item) => sum + item.priceTtc * item.qty, 0);
       const order: LocalOrder = {
         id:            orderId,
@@ -730,7 +742,7 @@ export async function importFichier3(
         customerEmail: email,
         address:       adresse ?? '',
         items,
-        status,
+        status: status as LocalOrderStatus,
         totalTTC:      roundMoney(totalTtc),
         source:        'local',
       };
@@ -751,7 +763,16 @@ export async function importFichier3(
   if (newOrders.length > 0) addLocalOrders(newOrders);
   return results;
 }
-
+async function updateOrderStatus(orderId: string, statusId: string): Promise<void> {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order_history>
+    <id_order><![CDATA[${orderId}]]></id_order>
+    <id_order_state><![CDATA[${statusId}]]></id_order_state>
+  </order_history>
+</prestashop>`;
+  await api.post('/order_histories', xml);
+}
 // ==========================================
 // IMAGES ZIP
 // ==========================================

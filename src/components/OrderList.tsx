@@ -1,17 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   fetchPSOrders,
-  getLocalOrders,
-  updateLocalOrderStatus,
   updatePSOrderStatus,
-  localStatusLabel,
   ALLOWED_PS_STATES,
-  ALLOWED_LOCAL_STATUSES,
   PS_STATE_LABELS,
-  type AnyOrder,
-  type LocalOrder,
   type PSOrder,
-  type LocalOrderStatus,
 } from '../services/orderService';
 import './OrderList.css';
 
@@ -32,57 +25,24 @@ function psStatusLabel(state: number): string {
   return PS_STATE_LABELS[state] ?? `État ${state}`;
 }
 
-function orderStatusClass(order: AnyOrder): string {
-  if (order.source === 'local') {
-    const s = (order as LocalOrder).status;
-    if (s === 'paid')      return 'status-badge--paid';
-    if (s === 'error')     return 'status-badge--error';
-    if (s === 'cancelled') return 'status-badge--cancelled';
-    return 'status-badge--pending';
-  }
-  const state = (order as PSOrder).currentState;
+function orderStatusClass(state: number): string {
   if (state === 2) return 'status-badge--paid';
   if (state === 8) return 'status-badge--error';
   if (state === 6) return 'status-badge--cancelled';
   return 'status-badge--default';
 }
 
-function orderLabel(order: AnyOrder): string {
-  if (order.source === 'local') return localStatusLabel((order as LocalOrder).status);
-  return psStatusLabel((order as PSOrder).currentState);
-}
-
-function orderId(order: AnyOrder): string {
-  return order.source === 'local' ? `LOC-${order.id}` : `#${(order as PSOrder).reference || order.id}`;
-}
-
-function orderDate(order: AnyOrder): string {
-  return formatDate(order.date);
-}
-
-function orderCustomer(order: AnyOrder): string {
-  return order.source === 'local'
-    ? (order as LocalOrder).customerName
-    : (order as PSOrder).customerName;
-}
-
-function orderAmount(order: AnyOrder): string {
-  return order.source === 'local'
-    ? formatAmount((order as LocalOrder).totalTTC)
-    : formatAmount((order as PSOrder).totalPaid);
-}
-
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 const OrderList: React.FC = () => {
-  const [orders, setOrders]         = useState<AnyOrder[]>([]);
+  const [orders, setOrders]         = useState<PSOrder[]>([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState<string | null>(null);
 
   // Sélection en attente de confirmation
   const [pendingChange, setPendingChange] = useState<{
-    order: AnyOrder;
-    newValue: string; // LocalOrderStatus | string(number) for PS
+    order: PSOrder;
+    newValue: number;
   } | null>(null);
   const [applying, setApplying] = useState(false);
 
@@ -90,15 +50,11 @@ const OrderList: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const [ps, local] = await Promise.all([fetchPSOrders(), Promise.resolve(getLocalOrders())]);
-      const all: AnyOrder[] = [
-        ...ps,
-        ...local,
-      ];
+      const ps = await fetchPSOrders();
       // Sort by date descending
-      all.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
-      setOrders(all);
-    } catch (e) {
+      ps.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+      setOrders(ps);
+    } catch {
       setError('Impossible de charger les commandes.');
     } finally {
       setLoading(false);
@@ -108,8 +64,8 @@ const OrderList: React.FC = () => {
   useEffect(() => { load(); }, [load]);
 
   // Quand l'utilisateur choisit un nouveau statut dans le select
-  const handleSelectChange = (order: AnyOrder, newValue: string) => {
-    setPendingChange({ order, newValue });
+  const handleSelectChange = (order: PSOrder, newValue: string) => {
+    setPendingChange({ order, newValue: parseInt(newValue, 10) });
   };
 
   const handleConfirmChange = async () => {
@@ -117,26 +73,15 @@ const OrderList: React.FC = () => {
     setApplying(true);
     const { order, newValue } = pendingChange;
 
-    if (order.source === 'local') {
-      updateLocalOrderStatus(order.id, newValue as LocalOrderStatus);
+    const ok = await updatePSOrderStatus(order.id, newValue);
+    if (ok) {
       setOrders((prev) =>
         prev.map((o) =>
-          o.source === 'local' && o.id === order.id
-            ? { ...o, status: newValue as LocalOrderStatus }
+          o.id === order.id
+            ? { ...o, currentState: newValue }
             : o
         )
       );
-    } else {
-      const ok = await updatePSOrderStatus(order.id, parseInt(newValue, 10));
-      if (ok) {
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.source === 'prestashop' && o.id === order.id
-              ? { ...o, currentState: parseInt(newValue, 10) }
-              : o
-          )
-        );
-      }
     }
 
     setApplying(false);
@@ -155,7 +100,7 @@ const OrderList: React.FC = () => {
           <div className="orders-modal">
             <h3 className="orders-modal-title">Confirmer le changement</h3>
             <p className="orders-modal-text">
-              Modifier le statut de la commande <strong>{orderId(pendingChange.order)}</strong> ?
+              Modifier le statut de la commande <strong>#{pendingChange.order.reference || pendingChange.order.id}</strong> ?
             </p>
             <div className="orders-modal-actions">
               <button className="btn btn-secondary" onClick={handleCancelChange} disabled={applying}>
@@ -191,36 +136,23 @@ const OrderList: React.FC = () => {
                 <th>Client</th>
                 <th>Montant TTC</th>
                 <th>Date</th>
-                <th>Source</th>
                 <th>Statut</th>
                 <th>Modifier</th>
               </tr>
             </thead>
             <tbody>
               {orders.map((order) => {
-                const key = `${order.source}-${order.id}`;
-                const allowedOptions = order.source === 'local'
-                  ? ALLOWED_LOCAL_STATUSES.map((s) => ({ label: s.label, value: s.value }))
-                  : ALLOWED_PS_STATES.map((s) => ({ label: s.label, value: String(s.value) }));
-
-                const currentValue = order.source === 'local'
-                  ? (order as LocalOrder).status
-                  : String((order as PSOrder).currentState);
+                const currentValue = String(order.currentState);
 
                 return (
-                  <tr key={key}>
-                    <td className="orders-cell-ref">{orderId(order)}</td>
-                    <td>{orderCustomer(order)}</td>
-                    <td className="orders-cell-amount">{orderAmount(order)}</td>
-                    <td>{orderDate(order)}</td>
+                  <tr key={order.id}>
+                    <td className="orders-cell-ref">#{order.reference || order.id}</td>
+                    <td>{order.customerName}</td>
+                    <td className="orders-cell-amount">{formatAmount(order.totalPaid)}</td>
+                    <td>{formatDate(order.date)}</td>
                     <td>
-                      <span className={`source-badge source-badge--${order.source}`}>
-                        {order.source === 'local' ? 'Local' : 'PrestaShop'}
-                      </span>
-                    </td>
-                    <td>
-                      <span className={`status-badge ${orderStatusClass(order)}`}>
-                        {orderLabel(order)}
+                      <span className={`status-badge ${orderStatusClass(order.currentState)}`}>
+                        {psStatusLabel(order.currentState)}
                       </span>
                     </td>
                     <td>
@@ -230,12 +162,12 @@ const OrderList: React.FC = () => {
                         onChange={(e) => handleSelectChange(order, e.target.value)}
                       >
                         {/* Option placeholder si statut courant n'est pas dans ALLOWED */}
-                        {!allowedOptions.some((o) => String(o.value) === currentValue) && (
+                        {!ALLOWED_PS_STATES.some((o) => String(o.value) === currentValue) && (
                           <option value={currentValue} disabled>
-                            {orderLabel(order)}
+                            {psStatusLabel(order.currentState)}
                           </option>
                         )}
-                        {allowedOptions.map((opt) => (
+                        {ALLOWED_PS_STATES.map((opt) => (
                           <option key={opt.value} value={opt.value}>
                             {opt.label}
                           </option>

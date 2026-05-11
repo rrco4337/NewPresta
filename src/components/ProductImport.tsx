@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { parseCSV, importProducts } from '../services/csvImportService';
-import type { CsvRow, ImportResult } from '../services/csvImportService';
+import { parseCSV, validateAllRows, importProducts } from '../services/csvImportService';
+import type { CsvRow, ImportResult, RowValidation } from '../services/csvImportService';
 import { cleanProducts } from '../services/otherImportService';
 import type { CleanResult } from '../services/otherImportService';
 import './ProductImport.css';
@@ -13,7 +13,8 @@ const ProductImport: React.FC = () => {
 
   const [step, setStep] = useState<Step>('idle');
   const [file, setFile] = useState<File | null>(null);
-  const [previewRows, setPreviewRows] = useState<CsvRow[]>([]);
+  const [allRows, setAllRows] = useState<CsvRow[]>([]);
+  const [validations, setValidations] = useState<RowValidation[]>([]);
   const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
   const [results, setResults] = useState<ImportResult[]>([]);
   const [dragOver, setDragOver] = useState(false);
@@ -34,7 +35,9 @@ const ProductImport: React.FC = () => {
 
     selectedFile.text().then((content) => {
       const rows = parseCSV(content);
-      setPreviewRows(rows.slice(0, 5));
+      setAllRows(rows);
+      const vals = validateAllRows(rows);
+      setValidations(vals);
       setStep('preview');
     });
   }
@@ -96,16 +99,23 @@ const ProductImport: React.FC = () => {
   // ── Réinitialisation ──────────────────────────────────────────────────────
   function handleReset() {
     setFile(null);
-    setPreviewRows([]);
+    setAllRows([]);
+    setValidations([]);
     setProgress({ done: 0, total: 0 });
     setResults([]);
     setStep('idle');
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
+  // ── Stats de validation ───────────────────────────────────────────────────
+  const errorCount = validations.filter((v) => v.errors.length > 0).length;
+  const warningCount = validations.filter((v) => v.warnings.length > 0 && v.errors.length === 0).length;
+  const validCount = validations.filter((v) => v.errors.length === 0).length;
+  const hasBlockingErrors = errorCount > 0;
+
   // ── Stats du rapport ──────────────────────────────────────────────────────
-  const successCount = results.filter((r) => r.success).length;
-  const errorCount = results.filter((r) => !r.success).length;
+  const reportSuccess = results.filter((r) => r.success).length;
+  const reportErrors = results.filter((r) => !r.success).length;
   const progressPercent = progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -146,41 +156,116 @@ const ProductImport: React.FC = () => {
         </div>
       )}
 
-      {/* ── PRÉVISUALISATION ── */}
-      {step === 'preview' && previewRows.length > 0 && (
+      {/* ── PRÉVISUALISATION AVEC VALIDATION ── */}
+      {step === 'preview' && allRows.length > 0 && (
         <div className="import-preview">
           <h2 className="import-section-title">
-            Aperçu — 5 premières lignes
+            Pré-validation — {allRows.length} ligne{allRows.length > 1 ? 's' : ''} détectée{allRows.length > 1 ? 's' : ''}
           </h2>
-          <div className="import-table-wrapper">
+
+          {/* Résumé de validation */}
+          <div className="import-validation-summary">
+            <div className="import-validation-chip import-validation-chip--valid">
+              <span className="import-validation-chip-icon">✓</span>
+              <span>{validCount} valide{validCount > 1 ? 's' : ''}</span>
+            </div>
+            {warningCount > 0 && (
+              <div className="import-validation-chip import-validation-chip--warning">
+                <span className="import-validation-chip-icon">⚠</span>
+                <span>{warningCount} avertissement{warningCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+            {errorCount > 0 && (
+              <div className="import-validation-chip import-validation-chip--error">
+                <span className="import-validation-chip-icon">✕</span>
+                <span>{errorCount} erreur{errorCount > 1 ? 's' : ''}</span>
+              </div>
+            )}
+          </div>
+
+          {hasBlockingErrors && (
+            <div className="import-blocking-banner">
+              Corrigez les erreurs dans le fichier CSV avant de lancer l'import.
+            </div>
+          )}
+
+          {/* Tableau complet avec erreurs ligne par ligne */}
+          <div className="import-table-wrapper" style={{ maxHeight: '480px', overflowY: 'auto' }}>
             <table className="import-table">
               <thead>
                 <tr>
+                  <th>Ligne</th>
+                  <th>Statut</th>
                   <th>Nom</th>
+                  <th>Référence</th>
                   <th>Prix HT</th>
                   <th>Prix achat</th>
-                  <th>Référence</th>
                   <th>Qté</th>
-                  <th>Condition</th>
+                  <th>Catégorie</th>
                   <th>Actif</th>
                 </tr>
               </thead>
               <tbody>
-                {previewRows.map((row, i) => (
-                  <tr key={i}>
-                    <td>{row.name}</td>
-                    <td>{row.price}</td>
-                    <td>{row.wholesalePrice}</td>
-                    <td>{row.reference}</td>
-                    <td>{row.quantity}</td>
-                    <td>{row.condition}</td>
-                    <td>
-                      <span className={`import-badge ${row.active === '1' ? 'import-badge--success' : 'import-badge--muted'}`}>
-                        {row.active === '1' ? 'Oui' : 'Non'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {allRows.map((row, i) => {
+                  const v = validations[i];
+                  const hasErrors = v && v.errors.length > 0;
+                  const hasWarnings = v && v.warnings.length > 0 && !hasErrors;
+                  const rowClass = hasErrors
+                    ? 'import-row--error'
+                    : hasWarnings
+                      ? 'import-row--warning'
+                      : 'import-row--valid';
+
+                  return (
+                    <React.Fragment key={i}>
+                      <tr className={rowClass}>
+                        <td>{i + 2}</td>
+                        <td>
+                          {hasErrors && (
+                            <span className="import-badge import-badge--error">Erreur</span>
+                          )}
+                          {hasWarnings && (
+                            <span className="import-badge import-badge--warning">Alerte</span>
+                          )}
+                          {!hasErrors && !hasWarnings && (
+                            <span className="import-badge import-badge--success">OK</span>
+                          )}
+                        </td>
+                        <td>{row.name}</td>
+                        <td><code>{row.reference || '—'}</code></td>
+                        <td>{row.price}</td>
+                        <td>{row.wholesalePrice || '—'}</td>
+                        <td>{row.quantity || '0'}</td>
+                        <td>{row.categories || '—'}</td>
+                        <td>
+                          <span className={`import-badge ${row.active === '1' ? 'import-badge--success' : 'import-badge--muted'}`}>
+                            {row.active === '1' ? 'Oui' : 'Non'}
+                          </span>
+                        </td>
+                      </tr>
+                      {/* Ligne d'erreurs/warnings en dessous */}
+                      {v && (v.errors.length > 0 || v.warnings.length > 0) && (
+                        <tr className={`${rowClass} import-detail-row`}>
+                          <td></td>
+                          <td colSpan={8}>
+                            <ul className="import-error-list">
+                              {v.errors.map((err, j) => (
+                                <li key={`e-${j}`} className="import-error-item">
+                                  <span className="import-error-icon">✕</span> {err}
+                                </li>
+                              ))}
+                              {v.warnings.map((warn, j) => (
+                                <li key={`w-${j}`} className="import-warning-item">
+                                  <span className="import-warning-icon">⚠</span> {warn}
+                                </li>
+                              ))}
+                            </ul>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -189,7 +274,12 @@ const ProductImport: React.FC = () => {
             <button className="btn btn-secondary" onClick={handleReset}>
               Changer de fichier
             </button>
-            <button className="btn btn-primary" onClick={handleImport}>
+            <button
+              className={`btn btn-primary${hasBlockingErrors ? ' btn--disabled' : ''}`}
+              onClick={handleImport}
+              disabled={hasBlockingErrors}
+              title={hasBlockingErrors ? 'Corrigez les erreurs avant de lancer l\'import' : ''}
+            >
               Lancer l'import
             </button>
           </div>
@@ -217,12 +307,12 @@ const ProductImport: React.FC = () => {
         <div className="import-report">
           <div className="import-stats">
             <div className="import-stat import-stat--success">
-              <span className="import-stat-value">{successCount}</span>
-              <span className="import-stat-label">Importé{successCount > 1 ? 's' : ''} avec succès</span>
+              <span className="import-stat-value">{reportSuccess}</span>
+              <span className="import-stat-label">Importé{reportSuccess > 1 ? 's' : ''} avec succès</span>
             </div>
             <div className="import-stat import-stat--error">
-              <span className="import-stat-value">{errorCount}</span>
-              <span className="import-stat-label">Erreur{errorCount > 1 ? 's' : ''}</span>
+              <span className="import-stat-value">{reportErrors}</span>
+              <span className="import-stat-label">Erreur{reportErrors > 1 ? 's' : ''}</span>
             </div>
             <div className="import-stat import-stat--total">
               <span className="import-stat-value">{results.length}</span>

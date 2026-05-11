@@ -68,7 +68,7 @@ function resolveFichier1Columns(header: string[]) {
   };
 
   return {
-    dateIdx: findIdx(['date_produit', 'date produit', 'date'], fallback.date),
+    dateIdx: findIdx(['date_produit', 'date produit', 'date','date_availability_produit'], fallback.date),
     nomIdx: findIdx(['nom', 'name'], fallback.nom),
     referenceIdx: findIdx(['reference', 'référence', 'ref'], fallback.reference),
     prixTtcIdx: findIdx(['prix_ttc', 'prix ttc', 'price_ttc'], fallback.prixTtc),
@@ -874,6 +874,7 @@ async function prevalidateFichier1Internal(
     const row = rows[i];
     const nom = row[cols.nomIdx] ?? '';
     const reference = row[cols.referenceIdx] ?? '';
+    const dateValue = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
     const prix_ttc_str = row[cols.prixTtcIdx] ?? '';
     const taxe_str = row[cols.taxeIdx] ?? '';
     const prix_achat_str = row[cols.prixAchatIdx] ?? '';

@@ -2,23 +2,23 @@ import { productService } from './produitApi';
 import type { Product } from './produitApi';
 
 // ==========================================
-// 1. TYPES
+// 1. TYPES - Version pour nouveau CSV
 // ==========================================
 
 export interface CsvRow {
-  id: string;
-  active: string;
-  name: string;
-  categories: string;
-  price: string;
-  taxRulesId: string;
-  wholesalePrice: string;
+  date_availability_produit: string;  // ✅ Nouveau
+  nom: string;                         // ✅ Changé (était name)
   reference: string;
-  weight: string;
-  quantity: string;
-  summary: string;
-  description: string;
-  condition: string;
+  prix_ttc: string;                    // ✅ Changé (était price)
+  taxe: string;                        // ✅ Changé (était taxRulesId)
+  categorie: string;                   // ✅ Changé (était categories)
+  prix_achat: string;                  // ✅ Nouveau
+  // Champs optionnels pour compatibilité
+  id?: string;
+  active?: string;
+  quantity?: string;
+  description?: string;
+  summary?: string;
 }
 
 export interface ImportResult {
@@ -32,29 +32,8 @@ export interface ImportResult {
 export type ProgressCallback = (done: number, total: number) => void;
 
 // ==========================================
-// 2. PARSING CSV
+// 2. PARSING CSV - Version pour nouveau CSV
 // ==========================================
-
-// Indices des colonnes dans le CSV PrestaShop (délimiteur ;)
-const COL = {
-  ID: 0,
-  ACTIVE: 1,
-  NAME: 2,
-  CATEGORIES: 3,
-  PRICE: 4,
-  TAX_RULES_ID: 5,
-  WHOLESALE_PRICE: 6,
-  REFERENCE: 12,
-  WEIGHT: 22,
-  QUANTITY: 25,
-  SUMMARY: 33,
-  DESCRIPTION: 34,
-  CONDITION: 51,
-} as const;
-
-function cleanCell(value: string): string {
-  return value.trim().replace(/^["']|["']$/g, '');
-}
 
 export function parseCSV(content: string): CsvRow[] {
   const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '');
@@ -62,24 +41,34 @@ export function parseCSV(content: string): CsvRow[] {
   return lines
     .slice(1)
     .map((line) => {
-      const cells = line.split(';');
+      // Gérer les différents séparateurs (TAB, ; ou ,)
+      let cells: string[];
+      if (line.includes('\t')) {
+        cells = line.split('\t');
+      } else if (line.includes(';')) {
+        cells = line.split(';');
+      } else {
+        cells = line.split(',');
+      }
+      
       return {
-        id: cleanCell(cells[COL.ID] ?? ''),
-        active: cleanCell(cells[COL.ACTIVE] ?? ''),
-        name: cleanCell(cells[COL.NAME] ?? ''),
-        categories: cleanCell(cells[COL.CATEGORIES] ?? ''),
-        price: cleanCell(cells[COL.PRICE] ?? ''),
-        taxRulesId: cleanCell(cells[COL.TAX_RULES_ID] ?? ''),
-        wholesalePrice: cleanCell(cells[COL.WHOLESALE_PRICE] ?? ''),
-        reference: cleanCell(cells[COL.REFERENCE] ?? ''),
-        weight: cleanCell(cells[COL.WEIGHT] ?? ''),
-        quantity: cleanCell(cells[COL.QUANTITY] ?? ''),
-        summary: cleanCell(cells[COL.SUMMARY] ?? ''),
-        description: cleanCell(cells[COL.DESCRIPTION] ?? ''),
-        condition: cleanCell(cells[COL.CONDITION] ?? ''),
-      } satisfies CsvRow;
+        date_availability_produit: cleanCell(cells[0] || ''),
+        nom: cleanCell(cells[1] || ''),
+        reference: cleanCell(cells[2] || ''),
+        prix_ttc: cleanCell(cells[3] || ''),
+        taxe: cleanCell(cells[4] || ''),
+        categorie: cleanCell(cells[5] || ''),
+        prix_achat: cleanCell(cells[6] || ''),
+        // Valeurs par défaut
+        active: '1',
+        quantity: '0',
+      };
     })
-    .filter((row) => row.name !== '');
+    .filter((row) => row.nom !== '');
+}
+
+function cleanCell(value: string): string {
+  return value.trim().replace(/^["']|["']$/g, '');
 }
 
 // ==========================================
@@ -89,46 +78,93 @@ export function parseCSV(content: string): CsvRow[] {
 export function validateRow(row: CsvRow, rowIndex: number): string[] {
   const errors: string[] = [];
 
-  if (!row.name) {
-    errors.push(`Ligne ${rowIndex + 2} : le champ "Name" est requis`);
+  if (!row.nom) {
+    errors.push(`Ligne ${rowIndex + 2} : le champ "nom" est requis`);
   }
 
-  const price = parseFloat(row.price);
-  if (row.price === '' || isNaN(price) || price < 0) {
-    errors.push(`Ligne ${rowIndex + 2} : "Price" invalide (valeur : "${row.price}")`);
+  const price = parseFloat(row.prix_ttc);
+  if (row.prix_ttc === '' || isNaN(price) || price < 0) {
+    errors.push(`Ligne ${rowIndex + 2} : "prix_ttc" invalide (valeur : "${row.prix_ttc}")`);
   }
 
   return errors;
 }
 
 // ==========================================
-// 4. MAPPING CSV → Product (WebService XML)
+// 4. FONCTIONS DE CALCUL
+// ==========================================
+
+// Convertir un taux de TVA (ex: "11,65%" ou "5,60%") en nombre
+function parseTaxRate(taxRateStr: string): number {
+  if (!taxRateStr) return 20;
+  
+  let cleaned = taxRateStr.trim().replace(/,/g, '.');
+  const match = cleaned.match(/(\d+(?:\.\d+)?)/);
+  if (!match) return 20;
+  
+  return parseFloat(match[1]);
+}
+
+// Calculer le prix HT à partir du prix TTC et du taux de TVA
+function calculatePriceHT(priceTTC: number, taxRate: number): number {
+  return priceTTC / (1 + taxRate / 100);
+}
+
+// Mapping catégorie vers ID
+function getCategoryId(categoryName: string): number {
+  const categoryMap: Record<string, number> = {
+    'Akanjo': 10,
+    'Accessoire': 11,
+  };
+  return categoryMap[categoryName] || 2;
+}
+
+// ==========================================
+// 5. MAPPING CSV → Product
 // ==========================================
 
 export function mapRowToProduct(row: CsvRow): Partial<Product> {
-  // id_category_default : tente la 1ère valeur numérique, sinon 2 (défaut PS)
-  const firstCategory = row.categories.split(',')[0].trim();
-  const parsedCategory = parseInt(firstCategory, 10);
-  const idCategory = isNaN(parsedCategory) ? 2 : parsedCategory;
+  // ID catégorie depuis le nom
+  const idCategory = getCategoryId(row.categorie);
+
+  // 1. Prix TTC depuis le CSV (convertir virgule en point)
+  let priceTTC = 0;
+  if (row.prix_ttc) {
+    priceTTC = parseFloat(row.prix_ttc.replace(',', '.'));
+  }
+  
+  // 2. Taux de TVA
+  const taxRate = parseTaxRate(row.taxe);
+  
+  // 3. Calculer le prix HT
+  const priceHT = calculatePriceHT(priceTTC, taxRate);
+  
+  // 4. Prix d'achat
+  let wholesalePrice = 0;
+  if (row.prix_achat) {
+    wholesalePrice = parseFloat(row.prix_achat.replace(',', '.'));
+  }
+
+  console.log(`📊 ${row.nom}: TTC=${priceTTC}€, TVA=${taxRate}%, HT=${priceHT.toFixed(2)}€`);
 
   return {
-    name: row.name,
-    price: parseFloat(row.price) || 0,
-    wholesale_price: parseFloat(row.wholesalePrice) || 0,
+    name: row.nom,
+    price: parseFloat(priceHT.toFixed(6)),
+    wholesale_price: wholesalePrice,
     reference: row.reference,
     ean13: '',
-    description: row.description,
-    description_short: row.summary,
-    meta_title: row.name,
-    active: row.active === '1',
-    quantity: parseInt(row.quantity, 10) || 0,
+    description: '',
+    description_short: '',
+    meta_title: row.nom,
+    active: true,
+    quantity: parseInt(row.quantity || '0', 10),
     id_category_default: idCategory,
-    id_tax_rules_group: parseInt(row.taxRulesId, 10) || 1,
+    id_tax_rules_group: 1,
   };
 }
 
 // ==========================================
-// 5. IMPORT PRODUITS — utilise productService.create() (WebService XML /api/products)
+// 6. IMPORT PRODUITS
 // ==========================================
 
 export async function importProducts(
@@ -147,7 +183,7 @@ export async function importProducts(
     if (validationErrors.length > 0) {
       results.push({
         rowIndex: i,
-        productName: row.name || `Ligne ${i + 2}`,
+        productName: row.nom || `Ligne ${i + 2}`,
         success: false,
         error: validationErrors.join(' | '),
       });
@@ -163,7 +199,7 @@ export async function importProducts(
 
       results.push({
         rowIndex: i,
-        productName: row.name,
+        productName: row.nom,
         success: true,
         productId: created.id,
       });
@@ -174,7 +210,7 @@ export async function importProducts(
           : err.message || 'Erreur inconnue';
       results.push({
         rowIndex: i,
-        productName: row.name,
+        productName: row.nom,
         success: false,
         error: msg,
       });
@@ -187,7 +223,7 @@ export async function importProducts(
 }
 
 // ==========================================
-// 6. UTILITAIRE — extrait le message d'erreur PrestaShop depuis le XML
+// 7. UTILITAIRE
 // ==========================================
 
 function extractXmlError(xmlString: string): string {

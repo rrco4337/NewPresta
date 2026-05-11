@@ -58,13 +58,15 @@ function slugify(name: string): string {
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
 }
 
-function extractXmlError(xml: string): string {
+function extractXmlError(xmlString: string): string {
   try {
-    const doc = new DOMParser().parseFromString(xml, 'text/xml');
-    return doc.querySelector('message')?.textContent?.trim()
-        ?? doc.querySelector('error')?.textContent?.trim()
-        ?? xml.slice(0, 100);
-  } catch { return 'Erreur API'; }
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+    const message = xmlDoc.getElementsByTagName("message")[0]?.textContent;
+    return message || "Erreur API inconnue";
+  } catch {
+    return "Erreur de formatage de la réponse serveur";
+  }
 }
 
 function getCreatedId(xml: string): string | null {
@@ -88,6 +90,18 @@ export interface FichierImportResult {
   success: boolean;
   error?: string;
   id?: string;
+}
+
+interface ParsedItem {
+  reference: string;
+  qty: number;
+  variant: string;
+}
+
+interface PricedItem extends ParsedItem {
+  productId: string;
+  price: number;          // prix unitaire HT
+  combinationId?: string;
 }
 
 export type FichierProgressCallback = (done: number, total: number, label: string) => void;
@@ -143,7 +157,7 @@ async function findOrCreateCategory(name: string): Promise<string> {
   categoryCache.set(name, id);
   return id;
 }
-
+let productPriceCache: Map<string, number> = new Map();
 export async function importFichier1(
   file: File,
   onProgress?: FichierProgressCallback,
@@ -190,6 +204,8 @@ export async function importFichier1(
 </prestashop>`;
       const id = await postXml('/products', xml);
       productRefCache.set(reference, id);
+     
+        productPriceCache.set(reference, ttc);
       results.push({ label, success: true, id });
     } catch (err: any) {
       results.push({ label, success: false,
@@ -408,12 +424,296 @@ async function createCustomer(nom: string, email: string, pwd: string): Promise<
 
 let orderCounter = Date.now();
 
+async function createAddress(customerId: string, nom: string, adresseStr: string): Promise<string | null> {
+  const parts = nom.trim().split(' ');
+  const firstname = parts[0] ?? nom;
+  const lastname = parts.slice(1).join(' ') || nom;
+
+  // PrestaShop exige un code postal et une ville. 
+  // On utilise l'adresse du CSV pour la ville et l'adresse1 par défaut.
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <address>
+    <id_customer><![CDATA[${customerId}]]></id_customer>
+    <id_country><![CDATA[1]]></id_country> <alias><![CDATA[Adresse Import]]></alias>
+    <lastname><![CDATA[${lastname}]]></lastname>
+    <firstname><![CDATA[${firstname}]]></firstname>
+    <address1><![CDATA[${adresseStr}]]></address1>
+    <city><![CDATA[${adresseStr}]]></city>
+    <postcode><![CDATA[00000]]></postcode> </address>
+</prestashop>`;
+
+  try {
+    return await postXml('/addresses', xml);
+  } catch (err) {
+    console.error("Erreur création adresse:", err);
+    return null;
+  }
+}
+
+async function createCart(customerId: string, addressId: string, items: any[]): Promise<string> {
+  const orderRows = await Promise.all(items.map(async (item) => {
+    const productId = await getProductIdByRef(item.reference);
+    return `
+      <cart_row>
+        <id_product><![CDATA[${productId || 0}]]></id_product>
+        <id_product_attribute><![CDATA[0]]></id_product_attribute>
+        <quantity><![CDATA[${item.qty}]]></quantity>
+      </cart_row>`;
+  }));
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <cart>
+    <id_customer><![CDATA[${customerId}]]></id_customer>
+    <id_address_delivery><![CDATA[${addressId}]]></id_address_delivery>
+    <id_address_invoice><![CDATA[${addressId}]]></id_address_invoice>
+    <id_currency><![CDATA[2]]></id_currency>
+    <id_lang><![CDATA[1]]></id_lang>
+    <id_carrier><![CDATA[6]]></id_carrier>
+    <associations>
+      <cart_rows>${orderRows.join('')}</cart_rows>
+    </associations>
+  </cart>
+</prestashop>`;
+
+  return await postXml('/carts', xml);
+}
+
+async function fetchProductPrice(ref: string): Promise<{ productId: string; price: number; combinationId?: string }> {
+  // 1. Chercher le produit par référence
+  const searchRes = await api.get(
+    `/products?filter[reference]=[${ref}]&display=[id,price,reference]`
+  );
+  const doc = new DOMParser().parseFromString(searchRes.data, 'text/xml');
+  const productEl = doc.querySelector('product');
+
+  if (!productEl) throw new Error(`Produit introuvable: ${ref}`);
+
+  const productId = productEl.querySelector('id')?.textContent?.trim() || '';
+  const price     = parseFloat(productEl.querySelector('price')?.textContent?.trim() || '0');
+
+  return { productId, price };
+}
+
+// ─── Résoudre les prix de tous les items ─────────────────────────────────────
+async function resolvePrices(items: ParsedItem[]): Promise<PricedItem[]> {
+  return Promise.all(
+    items.map(async (item) => {
+      try {
+        const { productId, price } = await fetchProductPrice(item.reference);
+        console.log(`💰 ${item.reference} → ${price} (x${item.qty})`);
+        return { ...item, productId, price };
+      } catch (err) {
+        console.warn(`⚠️ Prix introuvable pour ${item.reference}, utilisation de 0`);
+        return { ...item, productId: '', price: 0 };
+      }
+    })
+  );
+}
+
+// ─── Création de commande corrigée ───────────────────────────────────────────
+async function createPrestaOrder(
+  customerId: string,
+  addressId: string,
+  cartId: string,
+  items: ParsedItem[]          // ← items bruts du CSV : { ref, qty, variant }
+) {
+  console.log("=== CRÉATION COMMANDE ===");
+  console.log("Items reçus:", items); // debug pour vérifier les vrais noms de champs
+
+  // 1. Secure key
+  let secureKey = '';
+  try {
+    const customerRes = await api.get(`/customers/${customerId}?display=[secure_key]`);
+    const customerDoc = new DOMParser().parseFromString(customerRes.data, 'text/xml');
+    secureKey = customerDoc.querySelector('secure_key')?.textContent?.trim() || '';
+  } catch {
+    secureKey = '00000000000000000000000000000000';
+  }
+
+  // 2. Résoudre les prix depuis PrestaShop
+  const pricedItems = await resolvePrices(items);
+
+  // 3. Calculer les totaux
+  const totalProducts = pricedItems.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const taxRate        = 0;     // adapter si TVA (ex: 0.20)
+  const totalShipping  = 0;     // adapter si frais de port
+  const totalProdTTC   = totalProducts * (1 + taxRate);
+  const totalPaid      = totalProdTTC + totalShipping;
+  const fmt = (n: number) => n.toFixed(6);
+
+  console.log(`💰 Totaux → produits HT: ${fmt(totalProducts)}, TTC: ${fmt(totalProdTTC)}, total: ${fmt(totalPaid)}`);
+
+  // Sécurité : ne pas créer de commande avec total à 0
+  if (totalPaid === 0) {
+    throw new Error(`Total à 0 pour le panier ${cartId} — vérifier les références produits`);
+  }
+
+  // 4. Mettre à jour le panier
+  const updateCartXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <cart>
+    <id><![CDATA[${cartId}]]></id>
+    <id_address_delivery><![CDATA[${addressId}]]></id_address_delivery>
+    <id_address_invoice><![CDATA[${addressId}]]></id_address_invoice>
+    <id_customer><![CDATA[${customerId}]]></id_customer>
+    <id_currency><![CDATA[2]]></id_currency>
+    <id_lang><![CDATA[1]]></id_lang>
+    <id_carrier><![CDATA[6]]></id_carrier>
+    <secure_key><![CDATA[${secureKey}]]></secure_key>
+  </cart>
+</prestashop>`;
+
+  try {
+    await api.put(`/carts/${cartId}`, updateCartXml);
+    console.log("✅ Panier mis à jour");
+  } catch (err: any) {
+    throw new Error(`Impossible de mettre à jour le panier: ${err.message}`);
+  }
+
+  const orderRowsXml = pricedItems.map((item, index) => `
+      <order_row id="${index + 1}">
+        <product_id><![CDATA[${item.productId}]]></product_id>
+        <product_attribute_id><![CDATA[${item.combinationId || '0'}]]></product_attribute_id>
+        <product_quantity><![CDATA[${item.qty}]]></product_quantity>
+        <product_name><![CDATA[${item.reference}]]></product_name>
+        <product_reference><![CDATA[${item.reference}]]></product_reference>
+        <product_price><![CDATA[${fmt(item.price)}]]></product_price>
+        <unit_price_tax_incl><![CDATA[${fmt(item.price * (1 + taxRate))}]]></unit_price_tax_incl>
+        <unit_price_tax_excl><![CDATA[${fmt(item.price)}]]></unit_price_tax_excl>
+      </order_row>`
+).join('');
+
+  // 5. Créer la commande
+ const orderXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <order>
+    <id_cart><![CDATA[${cartId}]]></id_cart>
+    <id_address_delivery><![CDATA[${addressId}]]></id_address_delivery>
+    <id_address_invoice><![CDATA[${addressId}]]></id_address_invoice>
+    <id_currency><![CDATA[2]]></id_currency>
+    <id_lang><![CDATA[1]]></id_lang>
+    <id_customer><![CDATA[${customerId}]]></id_customer>
+    <id_carrier><![CDATA[6]]></id_carrier>
+    <id_shop><![CDATA[1]]></id_shop>
+    <id_shop_group><![CDATA[1]]></id_shop_group>
+    <current_state><![CDATA[1]]></current_state>
+    <module><![CDATA[ps_checkpayment]]></module>
+    <payment><![CDATA[Chèque]]></payment>
+    <secure_key><![CDATA[${secureKey}]]></secure_key>
+    <total_products><![CDATA[${fmt(totalProducts)}]]></total_products>
+    <total_products_wt><![CDATA[${fmt(totalProdTTC)}]]></total_products_wt>
+    <total_shipping><![CDATA[${fmt(totalShipping)}]]></total_shipping>
+    <total_shipping_tax_excl><![CDATA[${fmt(totalShipping)}]]></total_shipping_tax_excl>
+    <total_shipping_tax_incl><![CDATA[${fmt(totalShipping)}]]></total_shipping_tax_incl>
+    <total_discounts><![CDATA[0.000000]]></total_discounts>
+    <total_discounts_tax_excl><![CDATA[0.000000]]></total_discounts_tax_excl>
+    <total_discounts_tax_incl><![CDATA[0.000000]]></total_discounts_tax_incl>
+    <total_paid><![CDATA[${fmt(totalPaid)}]]></total_paid>
+    <total_paid_tax_excl><![CDATA[${fmt(totalProducts + totalShipping)}]]></total_paid_tax_excl>
+    <total_paid_tax_incl><![CDATA[${fmt(totalPaid)}]]></total_paid_tax_incl>
+    <total_paid_real><![CDATA[${fmt(totalPaid)}]]></total_paid_real>
+    <total_wrapping><![CDATA[0.000000]]></total_wrapping>
+    <total_wrapping_tax_excl><![CDATA[0.000000]]></total_wrapping_tax_excl>
+    <total_wrapping_tax_incl><![CDATA[0.000000]]></total_wrapping_tax_incl>
+    <conversion_rate><![CDATA[1.000000]]></conversion_rate>
+    <associations>
+      <order_rows>
+        ${orderRowsXml}
+      </order_rows>
+    </associations>
+  </order>
+</prestashop>`;
+
+  try {
+    const result = await api.post('/orders', orderXml);
+    console.log("✅ Commande créée!");
+    const idMatch = result.data.match(/<id><!\[CDATA\[(\d+)\]\]>/);
+    const orderId = idMatch ? idMatch[1] : null;
+    console.log("ID Commande:", orderId);
+    return orderId;
+
+  } catch (error: any) {
+   
+    const errData = error.response?.data || '';
+    const errStatus = error.response?.status || '?';
+    console.error(`❌ Erreur ${errStatus} création commande:`, errData || '(corps vide)');
+
+    // Vérifier si une commande existe déjà pour ce panier
+    try {
+      const searchRes = await api.get(`/orders?filter[id_cart]=[${cartId}]`);
+      const idMatch = searchRes.data.match(/<id><!\[CDATA\[(\d+)\]\]>/);
+      if (idMatch) {
+        console.log("✅ Commande existante trouvée:", idMatch[1]);
+        return idMatch[1];
+      }
+    } catch {}
+
+    throw error;
+  }
+}
+
+async function debugPrestaOrder(customerId: string, addressId: string, cartId: string, items: any[]) {
+  console.log("=== DÉBOGAGE COMMANDE PRESTASHOP ===");
+  
+  // Vérifier le client
+  try {
+    const customerRes = await api.get(`/customers/${customerId}?display=full`);
+    console.log("✅ Client existe:", customerRes.data.substring(0, 500));
+  } catch (err) {
+    console.error("❌ Client invalide:", err);
+  }
+  
+  // Vérifier l'adresse
+  try {
+    const addressRes = await api.get(`/addresses/${addressId}?display=full`);
+    console.log("✅ Adresse existe:", addressRes.data.substring(0, 500));
+  } catch (err) {
+    console.error("❌ Adresse invalide:", err);
+  }
+  
+  // Vérifier le panier
+  if (cartId !== '0') {
+    try {
+      const cartRes = await api.get(`/carts/${cartId}?display=full`);
+      console.log("✅ Panier existe:", cartRes.data.substring(0, 500));
+    } catch (err) {
+      console.error("❌ Panier invalide:", err);
+    }
+  }
+  
+  // Vérifier les produits
+  for (const item of items) {
+    const productId = await getProductIdByRef(item.reference);
+    if (productId) {
+      try {
+        const productRes = await api.get(`/products/${productId}?display=[id,reference,price]`);
+        console.log(`✅ Produit ${item.reference} existe:`, productRes.data);
+      } catch (err) {
+        console.error(`❌ Produit ${item.reference} invalide:`, err);
+      }
+    } else {
+      console.error(`❌ Produit ${item.reference} non trouvé`);
+    }
+  }
+  
+  // Vérifier les états de commande disponibles
+  try {
+    const statesRes = await api.get('/order_states?display=[id,name]');
+    console.log("États de commande disponibles:", statesRes.data);
+  } catch (err) {
+    console.error("❌ Impossible de récupérer les états:", err);
+  }
+}
+
+
 export async function importFichier3(
   file: File,
   onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
   const lines = parseCsvContent(await file.text());
-  const rows  = lines.slice(1).filter((r) => r[1]);
+  const rows = lines.slice(1).filter((r) => r[1]);
   const results: FichierImportResult[] = [];
   const newOrders: LocalOrder[] = [];
 
@@ -423,25 +723,64 @@ export async function importFichier3(
     onProgress?.(i, rows.length, label);
 
     try {
-      await createCustomer(nom, email, pwd);
-      const items  = parseAchat(achat ?? '');
-      const status = mapEtatToStatus(etat ?? '');
-      const order: LocalOrder = {
-        id:            String(++orderCounter),
-        date:          date ?? new Date().toLocaleDateString('fr-FR'),
-        customerName:  nom,
-        customerEmail: email,
-        address:       adresse ?? '',
-        items,
-        status,
-        totalTTC:      estimateTotal(items),
-        source:        'local',
-      };
-      newOrders.push(order);
-      results.push({ label, success: true, id: order.id });
+      // 1. Créer le client (ou récupérer son ID si déjà existant)
+      const customerId = await createCustomer(nom, email, pwd);
+      if (!customerId || customerId === '?') {
+        throw new Error("Échec de la création du client (Email déjà utilisé ou données invalides)");
+      }
+      
+      if (customerId && customerId !== '?') {
+        // 2. Créer l'adresse (indispensable pour l'étape suivante)
+        const addressId = await createAddress(customerId, nom, adresse ?? 'Non précisée');
+        if (!addressId || addressId === '?') {
+          throw new Error(`Impossible de lier l'adresse au client ID: ${customerId}`);
+        }
+
+        if (addressId && addressId !== '?') {
+          const items = parseAchat(achat ?? '');
+          
+          // 3. Créer la commande dans PrestaShop
+        let cartId;
+        try {
+          cartId = await createCart(customerId, addressId, items);
+          if (!cartId || cartId === '?') throw new Error("ID de panier invalide");
+        } catch (e: any) {
+          throw new Error(`[PANIER] ${e.message}`);
+        }
+        
+        // 2. Créer la commande liée à ce panier
+        let prestaOrderId;
+        try {
+          prestaOrderId = await createPrestaOrder(customerId, addressId, cartId, items);
+          if (!prestaOrderId || prestaOrderId === '?') throw new Error("ID de commande vide");
+        } catch (e: any) {
+          // C'est ici que ça risque de coincer
+          throw new Error(`[COMMANDE] ${e.message}`);
+        }
+          // 4. Ajouter à la liste locale pour l'affichage dans NewApp
+          const status = mapEtatToStatus(etat ?? '');
+          const order: LocalOrder = {
+            id: prestaOrderId, // On utilise l'ID généré par PrestaShop
+            date: date ?? new Date().toLocaleDateString('fr-FR'),
+            customerName: nom,
+            customerEmail: email,
+            address: adresse ?? '',
+            items,
+            status,
+            totalTTC: 0, // Idéalement, calculez-le ici
+            source: 'local',
+          };
+          newOrders.push(order);
+          results.push({ label, success: true, id: prestaOrderId });
+        }
+      }
     } catch (err: any) {
-      results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message });
+      const detail = err.response?.data ? extractXmlError(err.response.data) : err.message;
+      results.push({
+        label,
+        success: false,
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message,
+      });
     }
     onProgress?.(i + 1, rows.length, label);
   }
@@ -503,3 +842,4 @@ export async function importImagesZip(
   }
   return results;
 }
+

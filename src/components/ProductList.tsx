@@ -307,6 +307,12 @@ const ProductList: React.FC = () => {
                 <p className="product-price">{formatPrice(product)}</p>
 
                 <div className="product-actions">
+                   <button
+                    className="btn-details"
+                    onClick={() => navigate(`/products/details/${product.id}`)}
+                  >
+                    👁️ Voir détails
+                  </button>
                   <button
                     className="view-button"
                     onClick={() => navigate(`/products/${product.id}`)}

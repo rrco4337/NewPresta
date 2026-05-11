@@ -10,6 +10,7 @@ export interface Product {
   reference: string;
   ean13: string;
   price: number; // Prix de vente HT
+  price_ttc: number; 
   wholesale_price: number; // Prix d'achat
   active: boolean;
   quantity: number;
@@ -70,6 +71,7 @@ const PrestashopMapper = {
       reference: p.reference || '',
       ean13: p.ean13 || '',
       price: parseFloat(p.price || '0'),
+      price_ttc: parseFloat(p.price || '0'), 
       wholesale_price: parseFloat(p.wholesale_price || '0'),
       active: p.active === '1',
       quantity: 0,
@@ -170,6 +172,7 @@ export const productService = {
       return productsArray
         .filter(isRecord)
         .map(PrestashopMapper.mapToFrontend);
+        
     } catch (error) {
       console.error("Erreur getAll:", error);
       return [];
@@ -237,22 +240,24 @@ export const productService = {
     
     return api.put(`/stock_availables/${stockId}`, stockXml);
   },
+getProduct: async (id: string): Promise<Product | null> => {
+  try {
+    const response = await api.get(`/products/${id}?display=full`);
+    const xmlData = parseXMLToJSON(response.data);
+    const root = getPrestashopRoot(xmlData);
+    const rawProduct = root?.product;
 
-  getProduct: async (id: string): Promise<Product | null> => {
-    try {
-      const response = await api.get(`/products/${id}?display=full`);
-      const xmlData = parseXMLToJSON(response.data);
-      const root = getPrestashopRoot(xmlData);
-      const rawProduct = root?.product;
+    if (!rawProduct || !isRecord(rawProduct)) return null;
 
-      if (!rawProduct || !isRecord(rawProduct)) return null;
-
-      return PrestashopMapper.mapToFrontend(rawProduct);
-    } catch (error) {
-      console.error("Erreur getProduct:", error);
-      return null;
-    }
-  },
+    const product = PrestashopMapper.mapToFrontend(rawProduct);
+    const quantity = await productService.getProductQuantity(id);
+    
+    return { ...product, quantity };
+  } catch (error) {
+    console.error("Erreur getProduct:", error);
+    return null;
+  }
+},
 
   update: async (id: string, data: Partial<Product>): Promise<Product | null> => {
     try {
@@ -310,6 +315,34 @@ export const productService = {
     }
   },
 
+  // Ajoutez cette méthode après getAllProducts
+getProductQuantity: async (productId: string): Promise<number> => {
+  try {
+    const response = await api.get(`/stock_availables?filter[id_product]=${productId}&display=full`);
+    const xmlData = parseXMLToJSON(response.data);
+    
+    // Accès sécurisé avec vérifications
+    const root = xmlData as any;
+    const stockAvailables = root?.prestashop?.stock_availables?.stock_available 
+                         || root?.stock_availables?.stock_available;
+    
+    if (!stockAvailables) return 0;
+    
+    // Récupérer la quantité
+    let quantity = 0;
+    if (Array.isArray(stockAvailables) && stockAvailables.length > 0) {
+      quantity = parseInt(stockAvailables[0]?.quantity || '0', 10);
+    } else if (stockAvailables?.quantity) {
+      quantity = parseInt(stockAvailables.quantity, 10);
+    }
+    
+    console.log(`📦 Produit ${productId} - Quantité: ${quantity}`);
+    return quantity;
+  } catch (error) {
+    console.error(`Erreur getQuantity produit ${productId}:`, error);
+    return 0;
+  }
+}
   
 };
 

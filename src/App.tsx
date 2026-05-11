@@ -10,6 +10,7 @@ import CatalogImport from './components/CatalogImport';
 import FichiersImport from './components/FichiersImport';
 import OrderList from './components/OrderList';
 import DataReset from './components/DataReset';
+import ProductDetails from './components/ProductDetails';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
@@ -49,6 +50,16 @@ function App() {
               <ProtectedRoute>
                 <LayoutWrapper>
                   <ProductList />
+                </LayoutWrapper>
+              </ProtectedRoute>
+            }
+          />
+           <Route
+            path="/products/details/:id"
+            element={
+              <ProtectedRoute>
+                <LayoutWrapper>
+                  <ProductDetails />
                 </LayoutWrapper>
               </ProtectedRoute>
             }

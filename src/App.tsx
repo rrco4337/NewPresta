@@ -7,6 +7,9 @@ import ProductList from './components/ProductList';
 import ProductCreate from './components/ProductCreate';
 import ProductImport from './components/ProductImport';
 import CatalogImport from './components/CatalogImport';
+import FichiersImport from './components/FichiersImport';
+import OrderList from './components/OrderList';
+import DataReset from './components/DataReset';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
@@ -15,6 +18,9 @@ function resolvePageTitle(pathname: string): string {
   if (pathname === '/products/import') return 'Import CSV Produits';
   if (pathname.startsWith('/products/')) return 'Modifier le produit';
   if (pathname === '/import') return 'Import CSV Catalogue';
+  if (pathname === '/import/fichiers') return 'Import Fichiers';
+  if (pathname === '/orders') return 'Commandes';
+  if (pathname === '/reset') return 'Réinitialisation';
   return '';
 }
 
@@ -83,6 +89,36 @@ function App() {
               <ProtectedRoute>
                 <LayoutWrapper>
                   <CatalogImport />
+                </LayoutWrapper>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/import/fichiers"
+            element={
+              <ProtectedRoute>
+                <LayoutWrapper>
+                  <FichiersImport />
+                </LayoutWrapper>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <LayoutWrapper>
+                  <OrderList />
+                </LayoutWrapper>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reset"
+            element={
+              <ProtectedRoute>
+                <LayoutWrapper>
+                  <DataReset />
                 </LayoutWrapper>
               </ProtectedRoute>
             }

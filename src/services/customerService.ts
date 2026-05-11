@@ -12,6 +12,7 @@ export interface Customer {
   email: string;
   firstname: string;
   lastname: string;
+  secureKey: string;
 }
 
 export interface Address {
@@ -58,6 +59,18 @@ export interface PSCustomerOrder {
 
 // ── Customers ─────────────────────────────────────────────────────────────────
 
+export async function fetchSecureKey(customerId: string): Promise<string> {
+  try {
+    const res = await api.get(`/customers/${customerId}?display=[id,secure_key]`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const key = doc.querySelector('secure_key')?.textContent?.trim() ?? '';
+    return key;
+  } catch {
+    console.error('[fetchSecureKey] Failed for customer', customerId);
+    return '';
+  }
+}
+
 export async function findCustomerByEmail(email: string): Promise<Customer | null> {
   try {
     const res = await api.get(
@@ -68,11 +81,13 @@ export async function findCustomerByEmail(email: string): Promise<Customer | nul
     if (!el) return null;
     const id = el.querySelector('id')?.textContent?.trim();
     if (!id) return null;
+    const secureKey = await fetchSecureKey(id);
     return {
       id,
       email: el.querySelector('email')?.textContent?.trim() ?? email,
       firstname: el.querySelector('firstname')?.textContent?.trim() ?? '',
       lastname: el.querySelector('lastname')?.textContent?.trim() ?? '',
+      secureKey,
     };
   } catch { return null; }
 }
@@ -107,7 +122,8 @@ export async function registerCustomer(data: {
   if (!el) throw new Error('Échec de création du compte');
   const id = el.querySelector('id')?.textContent?.trim();
   if (!id) throw new Error('Échec de création du compte');
-  return { id, email: data.email, firstname: data.firstname, lastname: data.lastname };
+  const secureKey = await fetchSecureKey(id);
+  return { id, email: data.email, firstname: data.firstname, lastname: data.lastname, secureKey };
 }
 
 // ── Addresses ─────────────────────────────────────────────────────────────────
@@ -169,8 +185,12 @@ export async function createPSCart(
   customerId: string,
   addressId: string,
   carrierId: string,
-  items: CheckoutItem[]
+  items: CheckoutItem[],
+  secureKey?: string
 ): Promise<string> {
+  // Récupérer le secure_key si non fourni
+  const key = secureKey || await fetchSecureKey(customerId);
+
   const rowsXml = items.map(item => `
     <cart_row>
       <id_product><![CDATA[${item.id}]]></id_product>
@@ -179,6 +199,12 @@ export async function createPSCart(
       <id_customization><![CDATA[0]]></id_customization>
       <quantity><![CDATA[${item.qty}]]></quantity>
     </cart_row>`).join('');
+
+  console.log('[createPSCart] Debug payload:', {
+    customerId, secureKey: key, addressId, carrierId,
+    currencyId: 1, langId: 1, shopId: 1, shopGroupId: 1,
+    cartRowsCount: items.length,
+  });
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -192,6 +218,7 @@ export async function createPSCart(
   <id_shop_group><![CDATA[1]]></id_shop_group>
   <id_shop><![CDATA[1]]></id_shop>
   <id_carrier><![CDATA[${carrierId}]]></id_carrier>
+  <secure_key><![CDATA[${key}]]></secure_key>
   <recyclable><![CDATA[0]]></recyclable>
   <gift><![CDATA[0]]></gift>
   <mobile_theme><![CDATA[0]]></mobile_theme>

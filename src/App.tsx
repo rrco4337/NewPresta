@@ -50,8 +50,8 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <CustomerProvider>
         <CartProvider>
-          <CustomerProvider>
           <Routes>
             {/* ── Route publique login ── */}
             <Route path="/login" element={<Login />} />
@@ -188,8 +188,8 @@ function App() {
               element={<ShopLayout><MyOrders /></ShopLayout>}
             />
           </Routes>
-          </CustomerProvider>
         </CartProvider>
+        </CustomerProvider>
       </AuthProvider>
     </BrowserRouter>
   );

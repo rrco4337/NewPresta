@@ -40,7 +40,7 @@ const emptyForm = (): AddressFormState => ({
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const { customer } = useCustomer();
-  const { items, totalPrice, totalPriceHt, totalTax, clear } = useCart();
+  const { items, totalPrice, totalPriceHt, totalTax, clear, remoteCartId } = useCart();
 
   const [step, setStep] = useState<Step>('address');
 
@@ -122,7 +122,15 @@ const CheckoutPage: React.FC = () => {
         taxRate: i.taxRate,
         qty: i.qty,
       }));
-      const cartId = await createPSCart(customer.id, selectedAddr, carrierId, checkoutItems);
+      // Use the already-synced remote cart if available, otherwise create a new one
+      let cartId: string;
+      if (remoteCartId) {
+        cartId = remoteCartId;
+        console.log('[CheckoutPage] Using existing remote cart:', cartId);
+      } else {
+        cartId = await createPSCart(customer.id, selectedAddr, carrierId, checkoutItems, customer.secureKey);
+        console.log('[CheckoutPage] Created new cart:', cartId);
+      }
       const orderId = await createPSOrder({
         customerId: customer.id,
         addressId: selectedAddr,
@@ -321,7 +329,7 @@ const CheckoutPage: React.FC = () => {
                   <div key={item.id} className="review-item">
                     <span className="review-item-name">{item.name}</span>
                     <span className="review-item-qty">× {item.qty}</span>
-                    <span className="review-item-price">{formatPrice(item.price * item.qty)}</span>
+                    <span className="review-item-price">{formatPrice(item.priceTtc * item.qty)}</span>
                   </div>
                 ))}
               </div>
@@ -388,7 +396,7 @@ const CheckoutPage: React.FC = () => {
             <div key={item.id} className="sidebar-item">
               <span className="sidebar-item-name">{item.name}</span>
               <span className="sidebar-item-qty">×{item.qty}</span>
-              <span className="sidebar-item-price">{formatPrice(item.price * item.qty)}</span>
+              <span className="sidebar-item-price">{formatPrice(item.priceTtc * item.qty)}</span>
             </div>
           ))}
           <div className="sidebar-sep" />

@@ -40,7 +40,7 @@ const emptyForm = (): AddressFormState => ({
 const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const { customer } = useCustomer();
-  const { items, totalPrice, clear } = useCart();
+  const { items, totalPrice, totalPriceHt, totalTax, clear } = useCart();
 
   const [step, setStep] = useState<Step>('address');
 
@@ -71,6 +71,7 @@ const CheckoutPage: React.FC = () => {
 
   const shippingCost = CARRIERS.find(c => c.id === carrierId)?.price ?? 0;
   const total = totalPrice + shippingCost;
+  const totalTaxAmount = totalTax;
 
   // ── Step 1: Address ────────────────────────────────────────────────────────
 
@@ -113,7 +114,14 @@ const CheckoutPage: React.FC = () => {
     setPlacing(true);
     setPlaceError(null);
     try {
-      const checkoutItems = items.map(i => ({ id: i.id, name: i.name, price: i.price, qty: i.qty }));
+      const checkoutItems = items.map((i) => ({
+        id: i.id,
+        name: i.name,
+        priceHt: i.priceHt,
+        priceTtc: i.priceTtc,
+        taxRate: i.taxRate,
+        qty: i.qty,
+      }));
       const cartId = await createPSCart(customer.id, selectedAddr, carrierId, checkoutItems);
       const orderId = await createPSOrder({
         customerId: customer.id,
@@ -385,15 +393,19 @@ const CheckoutPage: React.FC = () => {
           ))}
           <div className="sidebar-sep" />
           <div className="sidebar-row">
-            <span>Sous-total</span>
-            <span>{formatPrice(totalPrice)}</span>
+            <span>Sous-total HT</span>
+            <span>{formatPrice(totalPriceHt)}</span>
+          </div>
+          <div className="sidebar-row">
+            <span>TVA</span>
+            <span>{formatPrice(totalTaxAmount)}</span>
           </div>
           <div className="sidebar-row">
             <span>Livraison</span>
             <span>{shippingCost === 0 ? 'Gratuit' : formatPrice(shippingCost)}</span>
           </div>
           <div className="sidebar-total">
-            <span>Total</span>
+            <span>Total TTC</span>
             <span>{formatPrice(total)}</span>
           </div>
         </div>

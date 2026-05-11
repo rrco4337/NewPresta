@@ -140,7 +140,14 @@ const ProductDetail: React.FC = () => {
 
   const handleAddToCart = () => {
     if (!product || product.quantity === 0) return;
-    addItem({ id: product.id, name: product.name, price: product.price, imageUrl: images[0] }, qty);
+    addItem({
+      id: product.id,
+      name: product.name,
+      priceHt: product.priceHt,
+      priceTtc: product.priceTtc,
+      taxRate: product.taxRate,
+      imageUrl: images[0],
+    }, qty);
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
@@ -179,6 +186,7 @@ const ProductDetail: React.FC = () => {
 
   const { label: stockLabel, level: stockLevel } = stockStatus(product.quantity);
   const maxQty = Math.max(1, Math.min(product.quantity, 99));
+  const taxPct = Math.round(product.taxRate * 10000) / 100;
 
   return (
     <div className="detail-page">
@@ -202,7 +210,9 @@ const ProductDetail: React.FC = () => {
             )}
           </div>
 
-          <div className="detail-price">{formatPrice(product.price)}</div>
+          <div className="detail-price">{formatPrice(product.priceTtc)}</div>
+
+          <div className="detail-tax">TVA: {taxPct}%</div>
 
           <span className={`stock-badge stock-badge--${stockLevel}`}>{stockLabel}</span>
 

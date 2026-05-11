@@ -1,12 +1,26 @@
 import axios from 'axios';
 import { productService, type Product } from './produitApi';
+import { getTaxRateByGroup } from './taxService';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
   headers: { 'Content-Type': 'application/xml', 'Accept': 'application/xml' },
 });
 
-export type ShopProduct = Product & { quantity: number };
+export type ShopProduct = Product & {
+  quantity: number;
+  priceHt: number;
+  priceTtc: number;
+  taxRate: number;
+};
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
+}
+
+function calcTtc(priceHt: number, taxRate: number): number {
+  return roundMoney(priceHt * (1 + taxRate));
+}
 
 // ── Stock ─────────────────────────────────────────────────────────────────────
 
@@ -52,10 +66,30 @@ export async function fetchShopProducts(): Promise<ShopProduct[]> {
     productService.getAllProducts({ active: true }),
     fetchStockMap(),
   ]);
-  return products.map(p => ({
-    ...p,
-    quantity: stockMap.get(p.id) ?? 0,
-  }));
+
+  const groupIds = Array.from(
+    new Set(products.map((p) => (Number.isFinite(p.id_tax_rules_group) ? p.id_tax_rules_group : 0)))
+  );
+
+  const taxRates = new Map<number, number>();
+  await Promise.all(
+    groupIds.map(async (groupId) => {
+      taxRates.set(groupId, await getTaxRateByGroup(groupId));
+    })
+  );
+
+  return products.map((p) => {
+    const taxRate = taxRates.get(p.id_tax_rules_group) ?? 0;
+    const priceHt = p.price;
+    const priceTtc = calcTtc(priceHt, taxRate);
+    return {
+      ...p,
+      quantity: stockMap.get(p.id) ?? 0,
+      priceHt,
+      priceTtc,
+      taxRate,
+    };
+  });
 }
 
 // ── Product detail ────────────────────────────────────────────────────────────
@@ -70,9 +104,18 @@ export async function fetchShopProductDetail(
       fetchProductImages(id),
     ]);
     if (!product) return null;
+    const taxRate = await getTaxRateByGroup(product.id_tax_rules_group);
+    const priceHt = product.price;
+    const priceTtc = calcTtc(priceHt, taxRate);
     const allImages = images.length > 0 ? images : (product.imageUrl ? [product.imageUrl] : []);
     return {
-      product: { ...product, quantity: stockMap.get(id) ?? 0 },
+      product: {
+        ...product,
+        quantity: stockMap.get(id) ?? 0,
+        priceHt,
+        priceTtc,
+        taxRate,
+      },
       images: allImages,
     };
   } catch { return null; }

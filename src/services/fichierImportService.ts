@@ -2,6 +2,15 @@ import axios from 'axios';
 import JSZip from 'jszip';
 import { addLocalOrders } from './orderService';
 import type { LocalOrder, LocalOrderStatus } from './orderService';
+import {
+  findCustomerByEmail,
+  createAddress,
+  createPSCart,
+  createPSOrder,
+  updateStockAfterOrder,
+  type CheckoutItem,
+} from './customerService';
+import { ensureTaxRulesGroupIdByRate, getTaxRateByGroup } from './taxService';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
@@ -39,8 +48,110 @@ function parseCsvContent(content: string): string[][] {
     .map(parseCsvLine);
 }
 
+function normalizeHeader(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function resolveFichier1Columns(header: string[]) {
+  const lower = header.map(normalizeHeader);
+  const hasDate = lower.includes('date_produit');
+  const fallback = hasDate
+    ? { date: 0, nom: 1, reference: 2, prixTtc: 3, taxe: 4, categorie: 5, prixAchat: 6 }
+    : { date: -1, nom: 0, reference: 1, prixTtc: 2, taxe: 3, categorie: 4, prixAchat: 5 };
+
+  const findIdx = (names: string[], fallbackIdx: number) => {
+    for (const name of names) {
+      const idx = lower.indexOf(name);
+      if (idx >= 0) return idx;
+    }
+    return fallbackIdx;
+  };
+
+  return {
+    dateIdx: findIdx(['date_produit', 'date produit', 'date'], fallback.date),
+    nomIdx: findIdx(['nom', 'name'], fallback.nom),
+    referenceIdx: findIdx(['reference', 'référence', 'ref'], fallback.reference),
+    prixTtcIdx: findIdx(['prix_ttc', 'prix ttc', 'price_ttc'], fallback.prixTtc),
+    taxeIdx: findIdx(['taxe', 'taux_tva', 'tva', 'tax'], fallback.taxe),
+    categorieIdx: findIdx(['categorie', 'catégorie', 'category'], fallback.categorie),
+    prixAchatIdx: findIdx(['prix_achat', 'prix achat', 'wholesale_price'], fallback.prixAchat),
+  };
+}
+
 function parseFrenchNumber(s: string): number {
   return parseFloat(s.replace(',', '.')) || 0;
+}
+
+function parseNumberStrict(raw: string): number | null {
+  const cleaned = raw.trim().replace('%', '').replace(',', '.');
+  if (!cleaned) return null;
+  const value = Number(cleaned);
+  return Number.isNaN(value) ? null : value;
+}
+
+function normalizeYear(year: number): number {
+  if (year >= 100) return year;
+  return year >= 70 ? 1900 + year : 2000 + year;
+}
+
+function buildDate(year: number, month: number, day: number, h = 0, m = 0, s = 0): Date | null {
+  const y = normalizeYear(year);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(y, month - 1, day, h, m, s);
+  if (Number.isNaN(date.getTime())) return null;
+  if (date.getFullYear() !== y || date.getMonth() !== month - 1 || date.getDate() !== day) return null;
+  return date;
+}
+
+function parseDateFlexible(raw: string): Date | null {
+  const value = raw.trim();
+  if (!value) return null;
+
+  const direct = Date.parse(value);
+  if (!Number.isNaN(direct)) return new Date(direct);
+
+  const ymd = value.match(/^([12]\d{3})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/);
+  if (ymd) {
+    const [, y, mo, d, hh, mm, ss] = ymd;
+    return buildDate(
+      parseInt(y, 10),
+      parseInt(mo, 10),
+      parseInt(d, 10),
+      parseInt(hh ?? '0', 10),
+      parseInt(mm ?? '0', 10),
+      parseInt(ss ?? '0', 10),
+    );
+  }
+
+  const dmy = value.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/);
+  if (dmy) {
+    const [, p1, p2, y, hh, mm, ss] = dmy;
+    const a = parseInt(p1, 10);
+    const b = parseInt(p2, 10);
+    const year = parseInt(y, 10);
+    let day = a;
+    let month = b;
+    if (a <= 12 && b <= 12) {
+      day = a; // format fr par defaut
+      month = b;
+    } else if (a > 12 && b <= 12) {
+      day = a;
+      month = b;
+    } else if (b > 12 && a <= 12) {
+      day = b;
+      month = a;
+    }
+    return buildDate(
+      year,
+      month,
+      day,
+      parseInt(hh ?? '0', 10),
+      parseInt(mm ?? '0', 10),
+      parseInt(ss ?? '0', 10),
+    );
+  }
+
+  return null;
 }
 
 function parseTaxRate(s: string): number {
@@ -56,6 +167,15 @@ function slugify(name: string): string {
   return name.toLowerCase()
     .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'item';
+}
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
+}
+
+function buildCombinationReference(reference: string, variant: string): string {
+  const suffix = slugify(variant);
+  return suffix ? `${reference}-${suffix}` : reference;
 }
 
 function extractXmlError(xml: string): string {
@@ -77,6 +197,56 @@ function getCreatedId(xml: string): string | null {
 async function postXml(endpoint: string, xml: string): Promise<string> {
   const res = await api.post(endpoint, xml);
   return getCreatedId(res.data) ?? '?';
+}
+
+async function fetchProductByReference(reference: string): Promise<{
+  id: string;
+  name: string;
+  priceHt: number;
+  taxRulesGroupId: number;
+} | null> {
+  try {
+    const res = await api.get(
+      `/products?display=[id,name,reference,price,id_tax_rules_group]&filter[reference]=[${reference}]`
+    );
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const el = doc.querySelector('product');
+    if (!el) return null;
+    const id = el.querySelector('id')?.textContent?.trim() ?? '';
+    const name = el.querySelector('name > language')?.textContent?.trim()
+      ?? el.querySelector('name')?.textContent?.trim()
+      ?? reference;
+    const priceHt = parseFloat(el.querySelector('price')?.textContent ?? '0');
+    const taxRulesGroupId = parseInt(el.querySelector('id_tax_rules_group')?.textContent ?? '0', 10);
+    if (!id) return null;
+    return { id, name, priceHt, taxRulesGroupId };
+  } catch (err) {
+    console.error('fetchProductByReference failed', { reference, err });
+    return null;
+  }
+}
+
+async function fetchCombinationByReference(reference: string): Promise<{
+  id: string;
+  productId: string;
+  priceImpact: number;
+} | null> {
+  try {
+    const res = await api.get(
+      `/combinations?display=[id,id_product,reference,price]&filter[reference]=[${reference}]`
+    );
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const el = doc.querySelector('combination');
+    if (!el) return null;
+    const id = el.querySelector('id')?.textContent?.trim() ?? '';
+    const productId = el.querySelector('id_product')?.textContent?.trim() ?? '';
+    const priceImpact = parseFloat(el.querySelector('price')?.textContent ?? '0');
+    if (!id) return null;
+    return { id, productId, priceImpact };
+  } catch (err) {
+    console.error('fetchCombinationByReference failed', { reference, err });
+    return null;
+  }
 }
 
 // ==========================================
@@ -103,7 +273,7 @@ let optionValueCache: Map<string, string> = new Map();
 let taxRateCache: Map<string, number> = new Map(); // reference → taxRate
 
 // ==========================================
-// FICHIER 1 — Produits (date_produit,nom,reference,prix_ttc,Taxe,categorie)
+// FICHIER 1 — Produits (date_produit,nom,reference,prix_ttc,Taxe,categorie,prix_achat)
 // ==========================================
 
 async function findOrCreateCategory(name: string): Promise<string> {
@@ -153,18 +323,37 @@ export async function importFichier1(
   taxRateCache = new Map();
 
   const lines = parseCsvContent(await file.text());
-  const rows  = lines.slice(1).filter((r) => r[1]); // skip header
+  const header = lines[0] ?? [];
+  const cols = resolveFichier1Columns(header);
+  const rows  = lines.slice(1).filter((r) => (r[cols.nomIdx] ?? '').trim() !== ''); // skip header
   const results: FichierImportResult[] = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const [, nom, reference, prix_ttc_str, taxe_str, categorie] = rows[i];
+    const row = rows[i];
+    const nom = row[cols.nomIdx] ?? '';
+    const reference = row[cols.referenceIdx] ?? '';
+    const dateValue = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
+    const prix_ttc_str = row[cols.prixTtcIdx] ?? '';
+    const taxe_str = row[cols.taxeIdx] ?? '';
+    const categorie = row[cols.categorieIdx] ?? '';
+    const prix_achat_str = row[cols.prixAchatIdx] ?? '';
     const label = `${nom} (${reference})`;
     onProgress?.(i, rows.length, label);
     try {
       const taxRate  = parseTaxRate(taxe_str ?? '0%');
       const ttc      = parseFrenchNumber(prix_ttc_str ?? '0');
       const ht       = ttcToHt(ttc, taxRate);
+      const wholesalePrice = parseFrenchNumber(prix_achat_str ?? '0');
       const catId    = await findOrCreateCategory(categorie ?? 'Général');
+      const taxGroupId = await ensureTaxRulesGroupIdByRate(taxRate);
+      if (!taxGroupId) {
+        console.error('Tax group not found for rate', {
+          label,
+          rate: taxRate,
+          taxLabel: taxe_str,
+        });
+        throw new Error(`Aucun groupe de taxe pour le taux ${taxe_str ?? '0%'}`);
+      }
       taxRateCache.set(reference, taxRate);
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -173,11 +362,11 @@ export async function importFichier1(
     <active><![CDATA[1]]></active>
     <state><![CDATA[1]]></state>
     <id_category_default><![CDATA[${catId}]]></id_category_default>
-    <id_tax_rules_group><![CDATA[1]]></id_tax_rules_group>
+    <id_tax_rules_group><![CDATA[${taxGroupId}]]></id_tax_rules_group>
     <type><![CDATA[simple]]></type>
     <reference><![CDATA[${reference}]]></reference>
     <price><![CDATA[${ht.toFixed(6)}]]></price>
-    <wholesale_price><![CDATA[0]]></wholesale_price>
+    <wholesale_price><![CDATA[${wholesalePrice.toFixed(6)}]]></wholesale_price>
     <name><language id="1"><![CDATA[${nom}]]></language></name>
     <link_rewrite><language id="1"><![CDATA[${slugify(nom)}]]></language></link_rewrite>
     <description><language id="1"><![CDATA[]]></language></description>
@@ -192,6 +381,11 @@ export async function importFichier1(
       productRefCache.set(reference, id);
       results.push({ label, success: true, id });
     } catch (err: any) {
+      console.error('Import fichier1 failed', {
+        label,
+        error: err,
+        response: err?.response?.data,
+      });
       results.push({ label, success: false,
         error: err.response?.data ? extractXmlError(err.response.data) : err.message });
     }
@@ -308,6 +502,7 @@ export async function importFichier2(
         const variantTtc = parseFrenchNumber(prix_ttc_str ?? '0');
         const variantHt  = variantTtc > 0 ? ttcToHt(variantTtc, taxRate) : baseHt;
         const priceImpact = (variantHt - baseHt).toFixed(6);
+        const combinationRef = buildCombinationReference(reference, karazany);
 
         const optionId = await getOrCreateOption(specificite);
         const valId    = await getOrCreateOptionValue(optionId, karazany);
@@ -316,6 +511,7 @@ export async function importFichier2(
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <combination>
     <id_product><![CDATA[${productId}]]></id_product>
+    <reference><![CDATA[${combinationRef}]]></reference>
     <price><![CDATA[${priceImpact}]]></price>
     <minimal_quantity><![CDATA[1]]></minimal_quantity>
     <default_on><![CDATA[0]]></default_on>
@@ -338,6 +534,11 @@ export async function importFichier2(
         results.push({ label, success: true });
       }
     } catch (err: any) {
+      console.error('Import fichier2 failed', {
+        label,
+        error: err,
+        response: err?.response?.data,
+      });
       results.push({ label, success: false,
         error: err.response?.data ? extractXmlError(err.response.data) : err.message });
     }
@@ -376,17 +577,22 @@ function mapEtatToStatus(etat: string): LocalOrderStatus {
   return 'pending';
 }
 
-function estimateTotal(
-  items: Array<{ reference: string; qty: number }>,
-): number {
-  // On ne connait pas les prix côté client à ce stade, on retourne 0
-  return 0;
+interface ImportCustomer {
+  id: string;
+  firstname: string;
+  lastname: string;
+  email: string;
 }
 
-async function createCustomer(nom: string, email: string, pwd: string): Promise<string | null> {
-  const parts     = nom.trim().split(' ');
+function splitCustomerName(nom: string): { firstname: string; lastname: string } {
+  const parts = nom.trim().split(' ').filter(Boolean);
   const firstname = parts[0] ?? nom;
-  const lastname  = parts.slice(1).join(' ') || nom;
+  const lastname = parts.slice(1).join(' ') || nom;
+  return { firstname, lastname };
+}
+
+async function createCustomer(nom: string, email: string, pwd: string): Promise<ImportCustomer | null> {
+  const { firstname, lastname } = splitCustomerName(nom);
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <customer>
@@ -402,11 +608,79 @@ async function createCustomer(nom: string, email: string, pwd: string): Promise<
   </customer>
 </prestashop>`;
   try {
-    return await postXml('/customers', xml);
-  } catch { return null; }
+    const id = await postXml('/customers', xml);
+    if (!id || id === '?') return null;
+    return { id, firstname, lastname, email };
+  } catch {
+    return null;
+  }
 }
 
-let orderCounter = Date.now();
+async function resolveCustomer(nom: string, email: string, pwd: string): Promise<ImportCustomer | null> {
+  const existing = await findCustomerByEmail(email);
+  if (existing) return existing;
+  return await createCustomer(nom, email, pwd);
+}
+
+async function ensureAddressForCustomer(customer: ImportCustomer, adresse: string): Promise<string | null> {
+  const address1 = adresse?.trim() || 'Adresse import';
+  const city = adresse?.trim() || 'Ville';
+  const postcode = '00000';
+  const alias = `Import ${customer.id}-${Date.now()}`;
+  try {
+    return await createAddress({
+      id_customer: customer.id,
+      alias,
+      firstname: customer.firstname,
+      lastname: customer.lastname,
+      address1,
+      address2: '',
+      postcode,
+      city,
+    });
+  } catch (err) {
+    console.error('Address creation failed', { customer: customer.email, adresse, err });
+    return null;
+  }
+}
+
+async function buildCheckoutItems(items: Array<{ reference: string; qty: number; variant: string }>): Promise<CheckoutItem[]> {
+  const result: CheckoutItem[] = [];
+
+  for (const item of items) {
+    const product = await fetchProductByReference(item.reference);
+    if (!product) throw new Error(`Produit "${item.reference}" introuvable`);
+
+    let attributeId: string | undefined;
+    let priceHt = product.priceHt;
+
+    if (item.variant) {
+      const combRef = buildCombinationReference(item.reference, item.variant);
+      const combination = await fetchCombinationByReference(combRef);
+      if (!combination) throw new Error(`Declinaison "${combRef}" introuvable`);
+      if (combination.productId && combination.productId !== product.id) {
+        console.warn('Combination product mismatch', { combRef, productId: product.id, comboProductId: combination.productId });
+      }
+      attributeId = combination.id;
+      priceHt = product.priceHt + combination.priceImpact;
+    }
+
+    const taxRate = await getTaxRateByGroup(product.taxRulesGroupId);
+    const priceTtc = roundMoney(priceHt * (1 + taxRate));
+
+    result.push({
+      id: product.id,
+      name: product.name || item.reference,
+      priceHt: roundMoney(priceHt),
+      priceTtc,
+      taxRate,
+      qty: item.qty,
+      attributeId,
+    });
+  }
+
+  return result;
+}
 
 export async function importFichier3(
   file: File,
@@ -417,29 +691,57 @@ export async function importFichier3(
   const results: FichierImportResult[] = [];
   const newOrders: LocalOrder[] = [];
 
+  const carrierId = '1';
+  const shippingCost = 0;
+
   for (let i = 0; i < rows.length; i++) {
     const [date, nom, email, pwd, adresse, achat, etat] = rows[i];
     const label = `${nom} (${email})`;
     onProgress?.(i, rows.length, label);
 
     try {
-      await createCustomer(nom, email, pwd);
-      const items  = parseAchat(achat ?? '');
+      const customer = await resolveCustomer(nom, email, pwd);
+      if (!customer) throw new Error(`Client "${email}" introuvable ou creation impossible`);
+
+      const addressId = await ensureAddressForCustomer(customer, adresse ?? '');
+      if (!addressId) throw new Error(`Adresse non creee pour ${email}`);
+
+      const items = parseAchat(achat ?? '');
+      const checkoutItems = await buildCheckoutItems(items);
+      if (checkoutItems.length === 0) throw new Error('Aucun achat valide dans la ligne');
+
+      const cartId = await createPSCart(customer.id, addressId, carrierId, checkoutItems);
+      const orderId = await createPSOrder({
+        customerId: customer.id,
+        addressId,
+        cartId,
+        carrierId,
+        items: checkoutItems,
+        shippingCost,
+      });
+      await updateStockAfterOrder(checkoutItems);
+
       const status = mapEtatToStatus(etat ?? '');
+      const totalTtc = checkoutItems.reduce((sum, item) => sum + item.priceTtc * item.qty, 0);
       const order: LocalOrder = {
-        id:            String(++orderCounter),
+        id:            orderId,
         date:          date ?? new Date().toLocaleDateString('fr-FR'),
         customerName:  nom,
         customerEmail: email,
         address:       adresse ?? '',
         items,
         status,
-        totalTTC:      estimateTotal(items),
+        totalTTC:      roundMoney(totalTtc),
         source:        'local',
       };
       newOrders.push(order);
-      results.push({ label, success: true, id: order.id });
+      results.push({ label, success: true, id: orderId });
     } catch (err: any) {
+      console.error('Import fichier3 failed', {
+        label,
+        error: err,
+        response: err?.response?.data,
+      });
       results.push({ label, success: false,
         error: err.response?.data ? extractXmlError(err.response.data) : err.message });
     }
@@ -497,9 +799,384 @@ export async function importImagesZip(
       await uploadImage(productId, blob, filename);
       results.push({ filename, reference, success: true });
     } catch (err: any) {
+      console.error('Import images failed', {
+        filename,
+        reference,
+        error: err,
+      });
       results.push({ filename, reference, success: false, error: err.message });
     }
     onProgress?.(i + 1, entries.length, filename);
   }
   return results;
+}
+
+// ==========================================
+// PRÉ-VALIDATION TRANSACTIONNELLE
+// ==========================================
+
+export type PrevalidateAllResult = {
+  fichier1: FichierImportResult[];
+  fichier2: FichierImportResult[];
+  fichier3: FichierImportResult[];
+  images: ImageImportResult[];
+  hasErrors: boolean;
+};
+
+type PrevalidateCallbacks = {
+  fichier1?: FichierProgressCallback;
+  fichier2?: FichierProgressCallback;
+  fichier3?: FichierProgressCallback;
+  images?: (done: number, total: number, name: string) => void;
+};
+
+type PrevalidateContext = {
+  productRefs: Set<string>;
+  taxRateByRef: Map<string, number>;
+  combinationRefs: Set<string>;
+};
+
+async function productExistsByRef(reference: string, cache: Map<string, boolean>): Promise<boolean> {
+  if (cache.has(reference)) return cache.get(reference)!;
+  const exists = Boolean(await fetchProductByReference(reference));
+  cache.set(reference, exists);
+  return exists;
+}
+
+async function combinationExistsByRef(reference: string, cache: Map<string, boolean>): Promise<boolean> {
+  if (cache.has(reference)) return cache.get(reference)!;
+  const exists = Boolean(await fetchCombinationByReference(reference));
+  cache.set(reference, exists);
+  return exists;
+}
+
+async function customerExistsByEmail(email: string, cache: Map<string, boolean>): Promise<boolean> {
+  if (cache.has(email)) return cache.get(email)!;
+  const exists = Boolean(await findCustomerByEmail(email));
+  cache.set(email, exists);
+  return exists;
+}
+
+async function prevalidateFichier1Internal(
+  file: File,
+  onProgress: PrevalidateCallbacks['fichier1'],
+  productExistsCache: Map<string, boolean>,
+): Promise<{ results: FichierImportResult[]; context: PrevalidateContext }> {
+  const lines = parseCsvContent(await file.text());
+  const header = lines[0] ?? [];
+  const cols = resolveFichier1Columns(header);
+  const rows  = lines.slice(1).filter((r) => (r[cols.nomIdx] ?? '').trim() !== '');
+  const results: FichierImportResult[] = [];
+  const productRefs = new Set<string>();
+  const taxRateByRef = new Map<string, number>();
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const nom = row[cols.nomIdx] ?? '';
+    const reference = row[cols.referenceIdx] ?? '';
+    const prix_ttc_str = row[cols.prixTtcIdx] ?? '';
+    const taxe_str = row[cols.taxeIdx] ?? '';
+    const prix_achat_str = row[cols.prixAchatIdx] ?? '';
+    const label = `${nom} (${reference})`;
+    onProgress?.(i, rows.length, label);
+
+    const errors: string[] = [];
+    if (!nom.trim()) errors.push('Nom manquant');
+    if (!reference.trim()) errors.push('Reference manquante');
+    if (dateValue.trim() && !parseDateFlexible(dateValue)) {
+      errors.push('Date invalide');
+    }
+
+    const prixRaw = prix_ttc_str.trim();
+    const prixParsed = prixRaw ? parseNumberStrict(prixRaw) : null;
+    if (!prixRaw) errors.push('Prix TTC manquant');
+    if (prixRaw && prixParsed == null) errors.push('Prix TTC invalide');
+
+    const prixAchatRaw = prix_achat_str.trim();
+    const prixAchatParsed = prixAchatRaw ? parseNumberStrict(prixAchatRaw) : null;
+    if (prixAchatRaw && prixAchatParsed == null) errors.push('Prix achat invalide');
+
+    const taxeRaw = taxe_str.trim();
+    const taxeParsed = taxeRaw ? parseNumberStrict(taxeRaw) : null;
+    if (taxeRaw && taxeParsed == null) errors.push('Taxe invalide');
+
+    if (reference && productRefs.has(reference)) errors.push('Reference en double');
+
+    if (errors.length === 0 && reference) {
+      const exists = await productExistsByRef(reference, productExistsCache);
+      if (exists) errors.push('Reference deja existante');
+    }
+
+    let taxRate = 0;
+    if (taxeParsed != null) taxRate = Math.max(0, taxeParsed) / 100;
+
+    if (errors.length === 0 && reference) {
+      productRefs.add(reference);
+      taxRateByRef.set(reference, taxRate);
+      results.push({ label, success: true });
+    } else {
+      results.push({ label, success: false, error: errors.join(' | ') });
+    }
+
+    onProgress?.(i + 1, rows.length, label);
+  }
+
+  return {
+    results,
+    context: { productRefs, taxRateByRef, combinationRefs: new Set() },
+  };
+}
+
+async function prevalidateFichier2Internal(
+  file: File,
+  baseContext: PrevalidateContext,
+  onProgress: PrevalidateCallbacks['fichier2'],
+  productExistsCache: Map<string, boolean>,
+  combinationExistsCache: Map<string, boolean>,
+): Promise<{ results: FichierImportResult[]; combinationRefs: Set<string> }> {
+  const lines = parseCsvContent(await file.text());
+  const rows  = lines.slice(1).filter((r) => r[0]);
+  const results: FichierImportResult[] = [];
+  const combinationRefs = new Set<string>();
+  const seenCombRefs = new Set<string>();
+
+  for (let i = 0; i < rows.length; i++) {
+    const [reference, specificite, karazany, stock_str, prix_ttc_str] = rows[i];
+    const label = `${reference}${karazany ? ' — ' + karazany : ''}`;
+    onProgress?.(i, rows.length, label);
+
+    const errors: string[] = [];
+    if (!reference?.trim()) errors.push('Reference manquante');
+
+    const stockRaw = (stock_str ?? '').trim();
+    if (stockRaw) {
+      const stockParsed = parseInt(stockRaw, 10);
+      if (Number.isNaN(stockParsed)) errors.push('Stock invalide');
+      if (!Number.isNaN(stockParsed) && stockParsed < 0) errors.push('Stock negatif');
+    }
+
+    const priceRaw = (prix_ttc_str ?? '').trim();
+    if (priceRaw) {
+      const priceParsed = parseNumberStrict(priceRaw);
+      if (priceParsed == null) errors.push('Prix TTC invalide');
+    }
+
+    const hasSpecificite = Boolean(specificite?.trim());
+    const hasKarazany = Boolean(karazany?.trim());
+    if (hasSpecificite !== hasKarazany) {
+      errors.push('Specificite et karazany doivent etre renseignes ensemble');
+    }
+
+    let combRef = '';
+    if (hasSpecificite && hasKarazany && reference?.trim()) {
+      combRef = buildCombinationReference(reference.trim(), karazany.trim());
+      if (seenCombRefs.has(combRef)) errors.push('Declinaison en double');
+      seenCombRefs.add(combRef);
+      combinationRefs.add(combRef);
+    }
+
+    if (errors.length === 0 && reference?.trim()) {
+      const ref = reference.trim();
+      if (!baseContext.productRefs.has(ref)) {
+        const exists = await productExistsByRef(ref, productExistsCache);
+        if (!exists) errors.push(`Produit "${ref}" introuvable`);
+      }
+    }
+
+    if (errors.length === 0 && combRef) {
+      const exists = await combinationExistsByRef(combRef, combinationExistsCache);
+      if (exists) errors.push(`Declinaison "${combRef}" deja existante`);
+    }
+
+    if (errors.length === 0) {
+      results.push({ label, success: true });
+    } else {
+      results.push({ label, success: false, error: errors.join(' | ') });
+    }
+
+    onProgress?.(i + 1, rows.length, label);
+  }
+
+  return { results, combinationRefs };
+}
+
+async function prevalidateFichier3Internal(
+  file: File,
+  baseContext: PrevalidateContext,
+  onProgress: PrevalidateCallbacks['fichier3'],
+  productExistsCache: Map<string, boolean>,
+  combinationExistsCache: Map<string, boolean>,
+  customerExistsCache: Map<string, boolean>,
+): Promise<FichierImportResult[]> {
+  const lines = parseCsvContent(await file.text());
+  const rows  = lines.slice(1).filter((r) => r[1]);
+  const results: FichierImportResult[] = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const nom = rows[i][1] ?? '';
+    const email = rows[i][2] ?? '';
+    const pwd = rows[i][3] ?? '';
+    const achat = rows[i][5] ?? '';
+    const dateValue = rows[i][0] ?? '';
+    const label = `${nom} (${email})`;
+    onProgress?.(i, rows.length, label);
+
+    const errors: string[] = [];
+    const emailValue = (email ?? '').trim();
+    if (!nom?.trim()) errors.push('Nom manquant');
+    if (!emailValue) errors.push('Email manquant');
+    if (emailValue && !/^\S+@\S+\.\S+$/.test(emailValue)) errors.push('Email invalide');
+    if (dateValue.trim() && !parseDateFlexible(dateValue)) {
+      errors.push('Date invalide');
+    }
+
+    if (emailValue && errors.length === 0) {
+      const customerExists = await customerExistsByEmail(emailValue, customerExistsCache);
+      if (!customerExists && !(pwd ?? '').trim()) {
+        errors.push('Mot de passe manquant pour nouveau client');
+      }
+    }
+
+    const items = parseAchat(achat ?? '');
+    if (items.length === 0) errors.push('Aucun achat valide dans la ligne');
+
+    for (const item of items) {
+      if (!item.reference.trim()) {
+        errors.push('Reference produit manquante');
+        continue;
+      }
+      if (item.qty <= 0) errors.push(`Quantite invalide pour ${item.reference}`);
+
+      const ref = item.reference.trim();
+      if (!baseContext.productRefs.has(ref)) {
+        const exists = await productExistsByRef(ref, productExistsCache);
+        if (!exists) errors.push(`Produit "${ref}" introuvable`);
+      }
+
+      if (item.variant?.trim()) {
+        const combRef = buildCombinationReference(ref, item.variant.trim());
+        if (!baseContext.combinationRefs.has(combRef)) {
+          const exists = await combinationExistsByRef(combRef, combinationExistsCache);
+          if (!exists) errors.push(`Declinaison "${combRef}" introuvable`);
+        }
+      }
+    }
+
+    if (errors.length === 0) {
+      results.push({ label, success: true });
+    } else {
+      results.push({ label, success: false, error: errors.join(' | ') });
+    }
+
+    onProgress?.(i + 1, rows.length, label);
+  }
+
+  return results;
+}
+
+async function prevalidateImagesZipInternal(
+  file: File,
+  baseContext: PrevalidateContext,
+  onProgress: PrevalidateCallbacks['images'],
+  productExistsCache: Map<string, boolean>,
+): Promise<ImageImportResult[]> {
+  const zip = await JSZip.loadAsync(await file.arrayBuffer());
+  const results: ImageImportResult[] = [];
+  const entries = Object.entries(zip.files).filter(
+    ([name, f]) => !f.dir && !name.startsWith('__MACOSX') && /\.(png|jpg|jpeg|webp|gif)$/i.test(name)
+  );
+
+  if (entries.length === 0) {
+    results.push({
+      filename: 'Aucune image',
+      reference: '',
+      success: false,
+      error: 'Archive vide ou sans image valide',
+    });
+    return results;
+  }
+
+  for (let i = 0; i < entries.length; i++) {
+    const [path] = entries[i];
+    const filename = path.split('/').pop() ?? path;
+    const reference = filename.replace(/\.[^.]+$/, '');
+    onProgress?.(i, entries.length, filename);
+
+    const errors: string[] = [];
+    if (!reference.trim()) errors.push('Nom de fichier invalide');
+
+    if (reference.trim() && !baseContext.productRefs.has(reference)) {
+      const exists = await productExistsByRef(reference, productExistsCache);
+      if (!exists) errors.push(`Produit "${reference}" introuvable`);
+    }
+
+    if (errors.length === 0) {
+      results.push({ filename, reference, success: true });
+    } else {
+      results.push({ filename, reference, success: false, error: errors.join(' | ') });
+    }
+
+    onProgress?.(i + 1, entries.length, filename);
+  }
+
+  return results;
+}
+
+export async function prevalidateFichiersImport(
+  files: { fichier1: File; fichier2: File; fichier3: File; images: File },
+  callbacks: PrevalidateCallbacks = {},
+): Promise<PrevalidateAllResult> {
+  const productExistsCache = new Map<string, boolean>();
+  const combinationExistsCache = new Map<string, boolean>();
+  const customerExistsCache = new Map<string, boolean>();
+
+  const fichier1Result = await prevalidateFichier1Internal(
+    files.fichier1,
+    callbacks.fichier1,
+    productExistsCache,
+  );
+
+  const fichier2Result = await prevalidateFichier2Internal(
+    files.fichier2,
+    fichier1Result.context,
+    callbacks.fichier2,
+    productExistsCache,
+    combinationExistsCache,
+  );
+
+  const fullContext: PrevalidateContext = {
+    productRefs: fichier1Result.context.productRefs,
+    taxRateByRef: fichier1Result.context.taxRateByRef,
+    combinationRefs: fichier2Result.combinationRefs,
+  };
+
+  const fichier3Results = await prevalidateFichier3Internal(
+    files.fichier3,
+    fullContext,
+    callbacks.fichier3,
+    productExistsCache,
+    combinationExistsCache,
+    customerExistsCache,
+  );
+
+  const imagesResults = await prevalidateImagesZipInternal(
+    files.images,
+    fullContext,
+    callbacks.images,
+    productExistsCache,
+  );
+
+  const hasErrors =
+    fichier1Result.results.some((r) => !r.success)
+    || fichier2Result.results.some((r) => !r.success)
+    || fichier3Results.some((r) => !r.success)
+    || imagesResults.some((r) => !r.success);
+
+  return {
+    fichier1: fichier1Result.results,
+    fichier2: fichier2Result.results,
+    fichier3: fichier3Results,
+    images: imagesResults,
+    hasErrors,
+  };
 }

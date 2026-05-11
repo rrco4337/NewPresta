@@ -29,9 +29,12 @@ export type AuthErrorCode =
   | 'SESSION_EXPIRED';
 
 export class AuthError extends Error {
-  constructor(message: string, public readonly code: AuthErrorCode) {
+  readonly code: AuthErrorCode;
+
+  constructor(message: string, code: AuthErrorCode) {
     super(message);
     this.name = 'AuthError';
+    this.code = code;
   }
 }
 

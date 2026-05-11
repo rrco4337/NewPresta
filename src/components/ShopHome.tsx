@@ -67,7 +67,14 @@ const ShopHome: React.FC = () => {
 
   const handleAddToCart = (product: ShopProduct) => {
     if (product.quantity === 0) return;
-    addItem({ id: product.id, name: product.name, price: product.price, imageUrl: product.imageUrl });
+    addItem({
+      id: product.id,
+      name: product.name,
+      priceHt: product.priceHt,
+      priceTtc: product.priceTtc,
+      taxRate: product.taxRate,
+      imageUrl: product.imageUrl,
+    });
     setAdded(product.id);
     setTimeout(() => setAdded(null), 1500);
   };
@@ -123,7 +130,7 @@ const ShopHome: React.FC = () => {
                     )}
 
                     <div className="card-price-row">
-                      <span className="card-price">{formatPrice(product.price)}</span>
+                      <span className="card-price">{formatPrice(product.priceTtc)}</span>
                       <StockBadge qty={product.quantity} />
                     </div>
 

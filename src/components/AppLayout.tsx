@@ -125,6 +125,7 @@ const navModules: NavModule[] = [
   },
   { label: 'Commandes', path: '/orders', icon: <IconCart />, section: 'Ventes' },
   { label: 'Clients',   path: '/clients', icon: <IconUsers />, disabled: true, section: 'Ventes' },
+  { label: 'Audit import', path: '/audit/import', icon: <IconChart />, section: 'Outils' },
   { label: 'Modules',      path: '/modules',  icon: <IconPuzzle />,  disabled: true, section: 'Configuration' },
   { label: 'Statistiques', path: '/stats',    icon: <IconChart />,   disabled: true, section: 'Configuration' },
   { label: 'Paramètres',   path: '/settings', icon: <IconSettings />,disabled: true, section: 'Configuration' },

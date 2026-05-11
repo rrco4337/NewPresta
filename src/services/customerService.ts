@@ -41,8 +41,11 @@ export interface CreateAddressData {
 export interface CheckoutItem {
   id: string;
   name: string;
-  price: number;
+  priceHt: number;
+  priceTtc: number;
+  taxRate: number;
   qty: number;
+  attributeId?: string;
 }
 
 export interface PSCustomerOrder {
@@ -171,7 +174,7 @@ export async function createPSCart(
   const rowsXml = items.map(item => `
     <cart_row>
       <id_product><![CDATA[${item.id}]]></id_product>
-      <id_product_attribute><![CDATA[0]]></id_product_attribute>
+      <id_product_attribute><![CDATA[${item.attributeId ?? '0'}]]></id_product_attribute>
       <id_address_delivery><![CDATA[${addressId}]]></id_address_delivery>
       <id_customization><![CDATA[0]]></id_customization>
       <quantity><![CDATA[${item.qty}]]></quantity>
@@ -216,8 +219,13 @@ export async function createPSOrder(params: {
   items: CheckoutItem[];
   shippingCost: number;
 }): Promise<string> {
-  const totalProducts = params.items.reduce((s, i) => s + i.price * i.qty, 0);
-  const totalPaid = totalProducts + params.shippingCost;
+  const totalProductsHt = params.items.reduce((s, i) => s + i.priceHt * i.qty, 0);
+  const totalProductsTtc = params.items.reduce((s, i) => s + i.priceTtc * i.qty, 0);
+  const shippingTaxRate = 0;
+  const shippingHt = params.shippingCost;
+  const shippingTtc = params.shippingCost;
+  const totalPaidTtc = totalProductsTtc + shippingTtc;
+  const totalPaidHt = totalProductsHt + shippingHt;
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
   const secureKey = Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map(b => b.toString(16).padStart(2, '0')).join('');
@@ -225,17 +233,17 @@ export async function createPSOrder(params: {
   const rowsXml = params.items.map(item => `
     <order_row>
       <product_id><![CDATA[${item.id}]]></product_id>
-      <product_attribute_id><![CDATA[0]]></product_attribute_id>
+      <product_attribute_id><![CDATA[${item.attributeId ?? '0'}]]></product_attribute_id>
       <product_quantity><![CDATA[${item.qty}]]></product_quantity>
       <product_name><![CDATA[${item.name}]]></product_name>
       <product_reference><![CDATA[]]></product_reference>
       <product_ean13><![CDATA[]]></product_ean13>
       <product_isbn><![CDATA[]]></product_isbn>
       <product_upc><![CDATA[]]></product_upc>
-      <product_price><![CDATA[${item.price.toFixed(6)}]]></product_price>
+      <product_price><![CDATA[${item.priceHt.toFixed(6)}]]></product_price>
       <id_customization><![CDATA[0]]></id_customization>
-      <unit_price_tax_incl><![CDATA[${item.price.toFixed(6)}]]></unit_price_tax_incl>
-      <unit_price_tax_excl><![CDATA[${item.price.toFixed(6)}]]></unit_price_tax_excl>
+      <unit_price_tax_incl><![CDATA[${item.priceTtc.toFixed(6)}]]></unit_price_tax_incl>
+      <unit_price_tax_excl><![CDATA[${item.priceHt.toFixed(6)}]]></unit_price_tax_excl>
     </order_row>`).join('');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -270,16 +278,16 @@ export async function createPSOrder(params: {
   <total_discounts><![CDATA[0.000000]]></total_discounts>
   <total_discounts_tax_incl><![CDATA[0.000000]]></total_discounts_tax_incl>
   <total_discounts_tax_excl><![CDATA[0.000000]]></total_discounts_tax_excl>
-  <total_paid><![CDATA[${totalPaid.toFixed(6)}]]></total_paid>
-  <total_paid_tax_incl><![CDATA[${totalPaid.toFixed(6)}]]></total_paid_tax_incl>
-  <total_paid_tax_excl><![CDATA[${totalPaid.toFixed(6)}]]></total_paid_tax_excl>
+  <total_paid><![CDATA[${totalPaidTtc.toFixed(6)}]]></total_paid>
+  <total_paid_tax_incl><![CDATA[${totalPaidTtc.toFixed(6)}]]></total_paid_tax_incl>
+  <total_paid_tax_excl><![CDATA[${totalPaidHt.toFixed(6)}]]></total_paid_tax_excl>
   <total_paid_real><![CDATA[0.000000]]></total_paid_real>
-  <total_products><![CDATA[${totalProducts.toFixed(6)}]]></total_products>
-  <total_products_wt><![CDATA[${totalProducts.toFixed(6)}]]></total_products_wt>
-  <total_shipping><![CDATA[${params.shippingCost.toFixed(6)}]]></total_shipping>
-  <total_shipping_tax_incl><![CDATA[${params.shippingCost.toFixed(6)}]]></total_shipping_tax_incl>
-  <total_shipping_tax_excl><![CDATA[${params.shippingCost.toFixed(6)}]]></total_shipping_tax_excl>
-  <carrier_tax_rate><![CDATA[0.000000]]></carrier_tax_rate>
+  <total_products><![CDATA[${totalProductsHt.toFixed(6)}]]></total_products>
+  <total_products_wt><![CDATA[${totalProductsTtc.toFixed(6)}]]></total_products_wt>
+  <total_shipping><![CDATA[${shippingTtc.toFixed(6)}]]></total_shipping>
+  <total_shipping_tax_incl><![CDATA[${shippingTtc.toFixed(6)}]]></total_shipping_tax_incl>
+  <total_shipping_tax_excl><![CDATA[${shippingHt.toFixed(6)}]]></total_shipping_tax_excl>
+  <carrier_tax_rate><![CDATA[${(shippingTaxRate * 100).toFixed(6)}]]></carrier_tax_rate>
   <total_wrapping><![CDATA[0.000000]]></total_wrapping>
   <total_wrapping_tax_incl><![CDATA[0.000000]]></total_wrapping_tax_incl>
   <total_wrapping_tax_excl><![CDATA[0.000000]]></total_wrapping_tax_excl>
@@ -305,9 +313,10 @@ export async function createPSOrder(params: {
 
 export async function updateStockAfterOrder(items: CheckoutItem[]): Promise<void> {
   for (const item of items) {
+    const attributeId = item.attributeId ?? '0';
     try {
       const stockRes = await api.get(
-        `/stock_availables?display=[id,quantity,id_product,id_product_attribute,depends_on_stock,out_of_stock]&filter[id_product]=[${item.id}]&filter[id_product_attribute]=[0]`
+        `/stock_availables?display=[id,quantity,id_product,id_product_attribute,depends_on_stock,out_of_stock]&filter[id_product]=[${item.id}]&filter[id_product_attribute]=[${attributeId}]`
       );
       const doc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
       const el = doc.querySelector('stock_available');
@@ -321,7 +330,7 @@ export async function updateStockAfterOrder(items: CheckoutItem[]): Promise<void
 <stock_available>
   <id><![CDATA[${stockId}]]></id>
   <id_product><![CDATA[${item.id}]]></id_product>
-  <id_product_attribute><![CDATA[0]]></id_product_attribute>
+  <id_product_attribute><![CDATA[${attributeId}]]></id_product_attribute>
   <quantity><![CDATA[${newQty}]]></quantity>
   <depends_on_stock><![CDATA[0]]></depends_on_stock>
   <out_of_stock><![CDATA[2]]></out_of_stock>

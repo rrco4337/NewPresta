@@ -98,6 +98,11 @@ export function validateRow(row: CsvRow, rowIndex: number): string[] {
     errors.push(`Ligne ${rowIndex + 2} : "Price" invalide (valeur : "${row.price}")`);
   }
 
+  const taxRulesId = parseInt(row.taxRulesId, 10);
+  if (!row.taxRulesId || Number.isNaN(taxRulesId) || taxRulesId <= 0) {
+    errors.push(`Ligne ${rowIndex + 2} : "Tax rules ID" invalide (valeur : "${row.taxRulesId}")`);
+  }
+
   return errors;
 }
 
@@ -110,6 +115,7 @@ export function mapRowToProduct(row: CsvRow): Partial<Product> {
   const firstCategory = row.categories.split(',')[0].trim();
   const parsedCategory = parseInt(firstCategory, 10);
   const idCategory = isNaN(parsedCategory) ? 2 : parsedCategory;
+  const taxRulesId = parseInt(row.taxRulesId, 10);
 
   return {
     name: row.name,
@@ -123,7 +129,7 @@ export function mapRowToProduct(row: CsvRow): Partial<Product> {
     active: row.active === '1',
     quantity: parseInt(row.quantity, 10) || 0,
     id_category_default: idCategory,
-    id_tax_rules_group: parseInt(row.taxRulesId, 10) || 1,
+    id_tax_rules_group: Number.isNaN(taxRulesId) ? 0 : taxRulesId,
   };
 }
 

@@ -20,6 +20,7 @@ import CustomerAuthPage from './components/CustomerAuthPage';
 import CheckoutPage from './components/CheckoutPage';
 import OrderConfirmation from './components/OrderConfirmation';
 import MyOrders from './components/MyOrders';
+import ImportAudit from './components/ImportAudit';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
@@ -31,6 +32,7 @@ function resolvePageTitle(pathname: string): string {
   if (pathname === '/import/fichiers') return 'Import Fichiers';
   if (pathname === '/orders') return 'Commandes';
   if (pathname === '/reset') return 'Réinitialisation';
+  if (pathname === '/audit/import') return 'Audit import';
   return '';
 }
 
@@ -149,6 +151,16 @@ function App() {
                 <ProtectedRoute>
                   <LayoutWrapper>
                     <DataReset />
+                  </LayoutWrapper>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/audit/import"
+              element={
+                <ProtectedRoute>
+                  <LayoutWrapper>
+                    <ImportAudit />
                   </LayoutWrapper>
                 </ProtectedRoute>
               }

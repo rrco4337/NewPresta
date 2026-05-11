@@ -6,7 +6,7 @@ import { formatPrice } from '../services/shopService';
 import './CartPage.css';
 
 const CartPage: React.FC = () => {
-  const { items, removeItem, updateQty, totalPrice, totalItems } = useCart();
+  const { items, removeItem, updateQty, totalPrice, totalPriceHt, totalTax, totalItems } = useCart();
   const { customer } = useCustomer();
   const navigate = useNavigate();
 
@@ -60,7 +60,7 @@ const CartPage: React.FC = () => {
 
               <div className="cart-item-info">
                 <Link to={`/shop/${item.id}`} className="cart-item-name">{item.name}</Link>
-                <span className="cart-item-price">{formatPrice(item.price)}</span>
+                <span className="cart-item-price">{formatPrice(item.priceTtc)}</span>
               </div>
 
               <div className="cart-item-qty">
@@ -75,7 +75,7 @@ const CartPage: React.FC = () => {
                 >+</button>
               </div>
 
-              <div className="cart-item-subtotal">{formatPrice(item.price * item.qty)}</div>
+              <div className="cart-item-subtotal">{formatPrice(item.priceTtc * item.qty)}</div>
 
               <button className="cart-item-remove" onClick={() => removeItem(item.id)} title="Retirer">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -91,8 +91,12 @@ const CartPage: React.FC = () => {
           <h2 className="cart-summary-title">Récapitulatif</h2>
 
           <div className="cart-summary-row">
-            <span>Sous-total</span>
-            <span>{formatPrice(totalPrice)}</span>
+            <span>Sous-total HT</span>
+            <span>{formatPrice(totalPriceHt)}</span>
+          </div>
+          <div className="cart-summary-row">
+            <span>TVA</span>
+            <span>{formatPrice(totalTax)}</span>
           </div>
           <div className="cart-summary-row cart-summary-row--muted">
             <span>Livraison</span>
@@ -100,7 +104,7 @@ const CartPage: React.FC = () => {
           </div>
 
           <div className="cart-summary-total">
-            <span>Total estimé</span>
+            <span>Total TTC</span>
             <span>{formatPrice(totalPrice)}</span>
           </div>
 

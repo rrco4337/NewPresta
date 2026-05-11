@@ -568,12 +568,90 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
   }).filter((it) => it.reference);
 }
 
-function mapEtatToPSState(etat: string): number | null {
-  const e = etat.toLowerCase();
-  if (e.includes('accept') || e.includes('effectu')) return 2;  // Paiement accepté
-  if (e.includes('erreur') || e.includes('chec'))    return 8;  // Échec paiement
-  if (e.includes('annul'))                            return 6;  // Annulé
-  return null; // pas de changement, garde l'état initial (13)
+function mapEtatToPSState(etat: string): number {
+  const e = etat
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // enlève les accents
+    .trim();
+
+  // 2 = Paiement accepté
+  if (
+    e.includes('paiement accepte') ||
+    e.includes('payment accepted') ||
+    e.includes('fandoavam-bola nekena')
+  ) {
+    return 2;
+  }
+
+  // 3 = En cours de préparation
+  if (
+    e.includes('preparation') ||
+    e.includes('processing')
+  ) {
+    return 3;
+  }
+
+  // 4 = Expédié
+  if (
+    e.includes('expedie') ||
+    e.includes('shipped')
+  ) {
+    return 4;
+  }
+
+  // 5 = Livré
+  if (
+    e.includes('livre') ||
+    e.includes('delivered')
+  ) {
+    return 5;
+  }
+
+  // 6 = Annulé
+  if (
+    e.includes('annule') ||
+    e.includes('cancel')
+  ) {
+    return 6;
+  }
+
+  // 7 = Remboursé
+  if (
+    e.includes('rembourse') ||
+    e.includes('refund')
+  ) {
+    return 7;
+  }
+
+  // 8 = Erreur paiement
+  if (
+    e.includes('erreur de paiement') ||
+    e.includes('payment error') ||
+    e.includes('hadisoana')
+  ) {
+    return 8;
+  }
+
+  // 13 = En attente paiement livraison
+  if (
+    e.includes('en attente paiement a la livraison') ||
+    e.includes('cash on delivery') ||
+    e.includes('awaiting cash on delivery')
+  ) {
+    return 13;
+  }
+
+  // 14 = En attente de paiement
+  if (
+    e.includes('en attente de paiement') ||
+    e.includes('waiting for payment')
+  ) {
+    return 14;
+  }
+
+  // état par défaut
+  return 13;
 }
 
 interface ImportCustomer {
@@ -708,7 +786,10 @@ export async function importFichier3(
       const checkoutItems = await buildCheckoutItems(items);
       if (checkoutItems.length === 0) throw new Error('Aucun achat valide dans la ligne');
 
+      // Créer le panier
       const cartId = await createPSCart(customer.id, addressId, carrierId, checkoutItems);
+      
+      // Créer la commande avec état neutre (1)
       const orderId = await createPSOrder({
         customerId: customer.id,
         addressId,
@@ -717,13 +798,11 @@ export async function importFichier3(
         items: checkoutItems,
         shippingCost,
       });
-      await updateStockAfterOrder(checkoutItems);
-
-      // Appliquer le statut PS basé sur le champ "etat" du CSV
+      
+      // Appliquer l'état final (qui va gérer le stock selon sa configuration)
       const psState = mapEtatToPSState(etat ?? '');
-      if (psState !== null) {
-        try {
-          const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
+      if (psState !== null && psState !== 1) { // Ne pas réappliquer l'état neutre
+        const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <order_history>
     <id_order><![CDATA[${orderId}]]></id_order>
@@ -731,13 +810,13 @@ export async function importFichier3(
     <id_employee><![CDATA[1]]></id_employee>
   </order_history>
 </prestashop>`;
-          await api.post('/order_histories', statusXml);
-        } catch (statusErr) {
-          console.warn('Statut commande non appliqué:', orderId, statusErr);
-        }
+        await api.post('/order_histories', statusXml);
       }
-
+      
+      // 🔥 NE RIEN FAIRE D'AUTRE - Laisser PrestaShop gérer le stock
+      
       results.push({ label, success: true, id: orderId });
+      
     } catch (err: any) {
       console.error('Import fichier3 failed', {
         label,
@@ -753,6 +832,22 @@ export async function importFichier3(
   return results;
 }
 
+// Fonction pour restaurer le stock
+async function restoreStock(productId: string, attributeId: string | undefined, qty: number): Promise<void> {
+  const combId = attributeId || '0';
+  const stockId = await getStockAvailableId(productId, combId);
+  
+  if (stockId) {
+    // Récupérer le stock actuel
+    const res = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const currentQty = parseInt(doc.querySelector('quantity')?.textContent ?? '0', 10);
+    
+    // Restaurer en ajoutant la quantité
+    const newQty = currentQty + qty;
+    await setStock(stockId, productId, combId, newQty);
+  }
+}
 // ==========================================
 // IMAGES ZIP
 // ==========================================

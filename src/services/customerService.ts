@@ -256,7 +256,7 @@ export async function createPSOrder(params: {
   <id_lang><![CDATA[1]]></id_lang>
   <id_customer><![CDATA[${params.customerId}]]></id_customer>
   <id_carrier><![CDATA[${params.carrierId}]]></id_carrier>
-  <current_state><![CDATA[13]]></current_state>
+  <current_state><![CDATA[1]]></current_state>
   <module><![CDATA[ps_cashondelivery]]></module>
   <payment><![CDATA[Paiement à la livraison]]></payment>
   <invoice_number><![CDATA[0]]></invoice_number>

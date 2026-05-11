@@ -1,7 +1,6 @@
 import axios from 'axios';
 import JSZip from 'jszip';
-import { addLocalOrders } from './orderService';
-import type { LocalOrder, LocalOrderStatus } from './orderService';
+
 import {
   findCustomerByEmail,
   createAddress,
@@ -569,12 +568,12 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
   }).filter((it) => it.reference);
 }
 
-function mapEtatToStatus(etat: string): LocalOrderStatus {
+function mapEtatToPSState(etat: string): number | null {
   const e = etat.toLowerCase();
-  if (e.includes('accept') || e.includes('effectu')) return 'paid';
-  if (e.includes('erreur') || e.includes('chec'))    return 'error';
-  if (e.includes('annul'))                            return 'cancelled';
-  return 'pending';
+  if (e.includes('accept') || e.includes('effectu')) return 2;  // Paiement accepté
+  if (e.includes('erreur') || e.includes('chec'))    return 8;  // Échec paiement
+  if (e.includes('annul'))                            return 6;  // Annulé
+  return null; // pas de changement, garde l'état initial (13)
 }
 
 interface ImportCustomer {
@@ -689,13 +688,12 @@ export async function importFichier3(
   const lines = parseCsvContent(await file.text());
   const rows  = lines.slice(1).filter((r) => r[1]);
   const results: FichierImportResult[] = [];
-  const newOrders: LocalOrder[] = [];
 
   const carrierId = '1';
   const shippingCost = 0;
 
   for (let i = 0; i < rows.length; i++) {
-    const [date, nom, email, pwd, adresse, achat, etat] = rows[i];
+    const [, nom, email, pwd, adresse, achat, etat] = rows[i];
     const label = `${nom} (${email})`;
     onProgress?.(i, rows.length, label);
 
@@ -721,20 +719,24 @@ export async function importFichier3(
       });
       await updateStockAfterOrder(checkoutItems);
 
-      const status = mapEtatToStatus(etat ?? '');
-      const totalTtc = checkoutItems.reduce((sum, item) => sum + item.priceTtc * item.qty, 0);
-      const order: LocalOrder = {
-        id:            orderId,
-        date:          date ?? new Date().toLocaleDateString('fr-FR'),
-        customerName:  nom,
-        customerEmail: email,
-        address:       adresse ?? '',
-        items,
-        status,
-        totalTTC:      roundMoney(totalTtc),
-        source:        'local',
-      };
-      newOrders.push(order);
+      // Appliquer le statut PS basé sur le champ "etat" du CSV
+      const psState = mapEtatToPSState(etat ?? '');
+      if (psState !== null) {
+        try {
+          const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order_history>
+    <id_order><![CDATA[${orderId}]]></id_order>
+    <id_order_state><![CDATA[${psState}]]></id_order_state>
+    <id_employee><![CDATA[1]]></id_employee>
+  </order_history>
+</prestashop>`;
+          await api.post('/order_histories', statusXml);
+        } catch (statusErr) {
+          console.warn('Statut commande non appliqué:', orderId, statusErr);
+        }
+      }
+
       results.push({ label, success: true, id: orderId });
     } catch (err: any) {
       console.error('Import fichier3 failed', {
@@ -748,7 +750,6 @@ export async function importFichier3(
     onProgress?.(i + 1, rows.length, label);
   }
 
-  if (newOrders.length > 0) addLocalOrders(newOrders);
   return results;
 }
 

@@ -23,7 +23,6 @@ import {
   type TaxRuleGroupAudit,
   type TaxRuleAudit,
 } from '../services/importAuditService';
-import { getLocalOrders, type LocalOrder } from '../services/orderService';
 import './ImportAudit.css';
 
 type SectionState<T> = {
@@ -46,7 +45,6 @@ const ImportAudit: React.FC = () => {
   const [taxes, setTaxes] = useState<SectionState<TaxAudit>>(DEFAULT_STATE);
   const [taxGroups, setTaxGroups] = useState<SectionState<TaxRuleGroupAudit>>(DEFAULT_STATE);
   const [taxRules, setTaxRules] = useState<SectionState<TaxRuleAudit>>(DEFAULT_STATE);
-  const [localOrders, setLocalOrders] = useState<SectionState<LocalOrder>>(DEFAULT_STATE);
 
   const loadAll = useCallback(async () => {
     setProducts((p) => ({ ...p, loading: true, error: null }));
@@ -60,7 +58,6 @@ const ImportAudit: React.FC = () => {
     setTaxes((p) => ({ ...p, loading: true, error: null }));
     setTaxGroups((p) => ({ ...p, loading: true, error: null }));
     setTaxRules((p) => ({ ...p, loading: true, error: null }));
-    setLocalOrders((p) => ({ ...p, loading: true, error: null }));
 
     const tasks = await Promise.allSettled([
       fetchProductsSample(),
@@ -74,7 +71,6 @@ const ImportAudit: React.FC = () => {
       fetchTaxesSample(),
       fetchTaxRuleGroupsSample(),
       fetchTaxRulesSample(),
-      Promise.resolve(getLocalOrders()),
     ]);
 
     const applyResult = <T,>(
@@ -99,7 +95,6 @@ const ImportAudit: React.FC = () => {
     applyResult(tasks[8] as PromiseSettledResult<TaxAudit[]>, setTaxes);
     applyResult(tasks[9] as PromiseSettledResult<TaxRuleGroupAudit[]>, setTaxGroups);
     applyResult(tasks[10] as PromiseSettledResult<TaxRuleAudit[]>, setTaxRules);
-    applyResult(tasks[11] as PromiseSettledResult<LocalOrder[]>, setLocalOrders);
   }, []);
 
   useEffect(() => {
@@ -455,40 +450,6 @@ const ImportAudit: React.FC = () => {
                     <td>{r.groupId}</td>
                     <td>{r.taxId}</td>
                     <td>{r.countryId}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="audit-section">
-        {renderHeader('Commandes locales', localOrders.items.length, localOrders.loading)}
-        {localOrders.error && <p className="audit-error">{localOrders.error}</p>}
-        {!localOrders.loading && localOrders.items.length === 0 && !localOrders.error && (
-          <p className="audit-empty">Aucune commande locale.</p>
-        )}
-        {localOrders.items.length > 0 && (
-          <div className="audit-table-wrap">
-            <table className="audit-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Date</th>
-                  <th>Client</th>
-                  <th>Email</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {localOrders.items.map((o) => (
-                  <tr key={o.id}>
-                    <td>{o.id}</td>
-                    <td>{o.date}</td>
-                    <td>{o.customerName}</td>
-                    <td>{o.customerEmail}</td>
-                    <td>{o.status}</td>
                   </tr>
                 ))}
               </tbody>

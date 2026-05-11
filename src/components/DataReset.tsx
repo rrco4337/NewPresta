@@ -7,9 +7,9 @@ import {
   cleanAddresses,
   cleanSuppliers,
   cleanBrands,
+  cleanOrders,
   type CleanResult,
 } from '../services/otherImportService';
-import { clearLocalOrders } from '../services/orderService';
 import './DataReset.css';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -27,6 +27,7 @@ const RESET_STEPS: Array<{
   label: string;
   run: (cb: (done: number, total: number) => void) => Promise<CleanResult>;
 }> = [
+  { label: 'Commandes',     run: (cb) => cleanOrders(cb) },
   { label: 'Déclinaisons',  run: (cb) => cleanCombinations(cb) },
   { label: 'Produits',      run: (cb) => cleanProducts(cb) },
   { label: 'Catégories',    run: (cb) => cleanCategories(cb) },
@@ -44,7 +45,7 @@ const DataReset: React.FC = () => {
   const [stepProgress, setStepProgress] = useState(0); // 0-100
   const [stepResults, setStepResults]   = useState<StepResult[]>([]);
 
-  const totalSteps = RESET_STEPS.length + 1; // +1 for local orders
+  const totalSteps = RESET_STEPS.length;
 
   const handleConfirm = () => setPhase('confirm');
   const handleCancel  = () => setPhase('idle');
@@ -78,13 +79,6 @@ const DataReset: React.FC = () => {
       setStepResults([...results]);
     }
 
-    // Dernière étape : commandes locales
-    setCurrentStep(RESET_STEPS.length);
-    setStepProgress(100);
-    clearLocalOrders();
-    results.push({ label: 'Commandes locales', result: { total: 0, deleted: 0, errors: 0 } });
-    setStepResults([...results]);
-
     setPhase('done');
   };
 
@@ -103,8 +97,8 @@ const DataReset: React.FC = () => {
           <h2 className="reset-confirm-title">Confirmer la réinitialisation</h2>
           <p className="reset-confirm-text">
             Cette action va supprimer <strong>toutes les données</strong> de la boutique PrestaShop
-            (produits, catégories, clients, adresses, fournisseurs, marques, déclinaisons)
-            ainsi que les commandes locales. Elle est <strong>irréversible</strong>.
+            (produits, catégories, clients, adresses, fournisseurs, marques, déclinaisons).
+            Elle est <strong>irréversible</strong>.
           </p>
           <div className="reset-confirm-actions">
             <button className="btn btn-secondary" onClick={handleCancel}>
@@ -121,9 +115,7 @@ const DataReset: React.FC = () => {
 
   if (phase === 'running') {
     const globalPct = Math.round((currentStep / totalSteps) * 100);
-    const currentLabel = currentStep < RESET_STEPS.length
-      ? RESET_STEPS[currentStep].label
-      : 'Commandes locales';
+    const currentLabel = RESET_STEPS[currentStep]?.label ?? '…';
 
     return (
       <div className="reset-page">
@@ -226,8 +218,8 @@ const DataReset: React.FC = () => {
             <p className="reset-warning-title">Zone de danger</p>
             <p className="reset-warning-text">
               Cette opération supprime toutes les données de la boutique : produits, catégories,
-              clients, adresses, fournisseurs, marques et déclinaisons. Les commandes locales sont
-              également effacées. Cette action est <strong>irréversible</strong>.
+              clients, adresses, fournisseurs, marques et déclinaisons.
+              Cette action est <strong>irréversible</strong>.
             </p>
           </div>
         </div>
@@ -241,10 +233,6 @@ const DataReset: React.FC = () => {
                 {s.label}
               </li>
             ))}
-            <li className="reset-entity-item">
-              <span className="reset-entity-dot" />
-              Commandes locales (localStorage)
-            </li>
           </ul>
         </div>
 

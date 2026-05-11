@@ -9,26 +9,6 @@ const api = axios.create({
 // TYPES
 // ==========================================
 
-export type LocalOrderStatus = 'pending' | 'paid' | 'error' | 'cancelled';
-
-export interface OrderItem {
-  reference: string;
-  qty: number;
-  variant: string;
-}
-
-export interface LocalOrder {
-  id: string;
-  date: string;
-  customerName: string;
-  customerEmail: string;
-  address: string;
-  items: OrderItem[];
-  status: LocalOrderStatus;
-  totalTTC: number;
-  source: 'local';
-}
-
 export interface PSOrder {
   id: string;
   reference: string;
@@ -37,10 +17,7 @@ export interface PSOrder {
   totalPaid: number;
   date: string;
   currentState: number;
-  source: 'prestashop';
 }
-
-export type AnyOrder = LocalOrder | PSOrder;
 
 // Statuts PrestaShop (défauts)
 export const PS_STATE_LABELS: Record<number, string> = {
@@ -55,6 +32,7 @@ export const PS_STATE_LABELS: Record<number, string> = {
   9:  'En rupture (payé)',
   10: 'En attente virement',
   11: 'Paiement à la livraison',
+  13: 'En attente COD',
 };
 
 // Les 3 statuts modifiables demandés
@@ -64,61 +42,9 @@ export const ALLOWED_PS_STATES = [
   { label: 'Annulé',            value: 6 },
 ];
 
-export const ALLOWED_LOCAL_STATUSES: { label: string; value: LocalOrderStatus }[] = [
-  { label: 'Paiement effectué', value: 'paid'      },
-  { label: 'Échec paiement',    value: 'error'     },
-  { label: 'Annulé',            value: 'cancelled' },
-];
-
-export function localStatusLabel(s: LocalOrderStatus): string {
-  const map: Record<LocalOrderStatus, string> = {
-    pending:   'En attente',
-    paid:      'Paiement effectué',
-    error:     'Échec paiement',
-    cancelled: 'Annulé',
-  };
-  return map[s] ?? s;
-}
-
-// ==========================================
-// LOCAL ORDERS (localStorage)
-// ==========================================
-
-const LOCAL_KEY = 'ps_local_orders';
-
-export function getLocalOrders(): LocalOrder[] {
-  try {
-    return JSON.parse(localStorage.getItem(LOCAL_KEY) ?? '[]') as LocalOrder[];
-  } catch { return []; }
-}
-
-export function saveLocalOrders(orders: LocalOrder[]): void {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(orders));
-}
-
-export function addLocalOrders(orders: LocalOrder[]): void {
-  const existing = getLocalOrders();
-  const merged   = [...existing, ...orders];
-  saveLocalOrders(merged);
-}
-
-export function updateLocalOrderStatus(id: string, status: LocalOrderStatus): void {
-  const orders = getLocalOrders().map((o) => o.id === id ? { ...o, status } : o);
-  saveLocalOrders(orders);
-}
-
-export function clearLocalOrders(): void {
-  localStorage.removeItem(LOCAL_KEY);
-}
-
 // ==========================================
 // PRESTASHOP ORDERS
 // ==========================================
-
-function parseText(xmlString: string, selector: string): string {
-  const doc = new DOMParser().parseFromString(xmlString, 'text/xml');
-  return doc.querySelector(selector)?.textContent?.trim() ?? '';
-}
 
 function parseOrdersXml(xmlString: string): Omit<PSOrder, 'customerName'>[] {
   const doc = new DOMParser().parseFromString(xmlString, 'text/xml');
@@ -130,7 +56,7 @@ function parseOrdersXml(xmlString: string): Omit<PSOrder, 'customerName'>[] {
     const totalPaid  = parseFloat(el.querySelector('total_paid_tax_incl')?.textContent ?? '0');
     const date       = el.querySelector('date_add')?.textContent?.trim() ?? '';
     const state      = parseInt(el.querySelector('current_state')?.textContent ?? '0', 10);
-    if (id) orders.push({ id, reference, customerId, totalPaid, date, currentState: state, source: 'prestashop' });
+    if (id) orders.push({ id, reference, customerId, totalPaid, date, currentState: state });
   });
   return orders;
 }
@@ -175,6 +101,3 @@ export async function updatePSOrderStatus(orderId: string, stateId: number): Pro
     return true;
   } catch { return false; }
 }
-
-// Extract text from PS order XML for the reference field
-export { parseText };

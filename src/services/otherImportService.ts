@@ -118,6 +118,7 @@ export const cleanSuppliers    = (cb?: ProgressCallback) => cleanEntities('/supp
 export const cleanBrands       = (cb?: ProgressCallback) => cleanEntities('/manufacturers',[], cb);
 export const cleanCombinations = (cb?: ProgressCallback) => cleanEntities('/combinations', [], cb);
 export const cleanProducts     = (cb?: ProgressCallback) => cleanEntities('/products',     [], cb);
+export const cleanOrders       = (cb?: ProgressCallback) => cleanEntities('/orders',       [], cb);
 
 // ==========================================
 // 1. CATÉGORIES

@@ -369,17 +369,24 @@ export async function updateStockAfterOrder(items: CheckoutItem[]): Promise<void
 }
 
 // ── Customer orders ───────────────────────────────────────────────────────────
-
 export async function getCustomerOrders(customerId: string): Promise<PSCustomerOrder[]> {
   try {
-    const res = await api.get(
-      `/orders?display=[id,reference,total_paid,current_state,date_add]&filter[id_customer]=[${customerId}]&sort=[date_add_DESC]`
-    );
+    // On ajoute le filtre directement dans l'URL pour soulager le serveur
+    const url = `/orders?` + 
+                `display=[id,reference,total_paid,current_state,date_add,id_customer]` +
+                `&filter[id_customer]=[${customerId}]` + // Filtre SQL côté serveur
+                `&sort=[date_add_DESC]`;
+
+    const res = await api.get(url);
     const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    
     const orders: PSCustomerOrder[] = [];
+    
+    // Si aucune commande n'est trouvée, PrestaShop peut retourner un XML vide ou sans balise <order>
     doc.querySelectorAll('order').forEach(el => {
       const id = el.querySelector('id')?.textContent?.trim();
       if (!id) return;
+      
       orders.push({
         id,
         reference: el.querySelector('reference')?.textContent?.trim() ?? `#${id}`,
@@ -388,6 +395,11 @@ export async function getCustomerOrders(customerId: string): Promise<PSCustomerO
         dateAdd: el.querySelector('date_add')?.textContent?.trim() ?? '',
       });
     });
+
     return orders;
-  } catch { return []; }
+  } catch (error) {
+    // Si l'erreur 500 persiste, vérifiez les logs PHP sur le serveur (error_log)
+    console.error('Failed to fetch customer orders:', error);
+    return [];
+  }
 }

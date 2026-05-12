@@ -1,49 +1,26 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchOrders } from '../services/dashboardApi';
-import { type DailyOrderStat, type DashboardData,type  DateRangePreset } from '../types/dashboard.types';
+import { fetchOrders,type OrderFromApi } from '../services/dashboardApi';
+import {type  DailyOrderStat,type  DashboardData, type DashboardFilters } from '../types/dashboard.types';
 
-function getDateRange(preset: DateRangePreset): { from: Date; to: Date } {
-  const now = new Date();
-  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
-  let from = new Date(to);
-
-  switch (preset) {
-    case 'today':
-      from = new Date(to.getFullYear(), to.getMonth(), to.getDate(), 0, 0, 0);
-      break;
-    case 'last7days':
-      from.setDate(to.getDate() - 6);
-      from.setHours(0, 0, 0, 0);
-      break;
-    case 'last30days':
-      from.setDate(to.getDate() - 29);
-      from.setHours(0, 0, 0, 0);
-      break;
-  }
-  return { from, to };
-}
-
-function aggregateOrdersByDay(orders: any[]): DailyOrderStat[] {
+function aggregateOrdersByDay(orders: OrderFromApi[]): DailyOrderStat[] {
   const map = new Map<string, { count: number; amount: number }>();
-
   orders.forEach(order => {
-    const date = order.date_add.split('T')[0]; // YYYY-MM-DD
+    const date = order.date_add.split(' ')[0];
     const amount = parseFloat(order.total_paid_tax_incl);
     const existing = map.get(date);
     if (existing) {
-      existing.count += 1;
+      existing.count++;
       existing.amount += amount;
     } else {
       map.set(date, { count: 1, amount });
     }
   });
-
   return Array.from(map.entries())
     .map(([date, { count, amount }]) => ({ date, orderCount: count, totalAmount: amount }))
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function useDashboardData(preset: DateRangePreset, autoRefreshIntervalMs = 60000) {
+export function useDashboardData(filters: DashboardFilters, autoRefreshIntervalMs = 60000) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,27 +29,26 @@ export function useDashboardData(preset: DateRangePreset, autoRefreshIntervalMs 
     setLoading(true);
     setError(null);
     try {
-      const { from, to } = getDateRange(preset);
-      const fromStr = from.toISOString().split('T')[0];
-      const toStr = to.toISOString().split('T')[0];
-
-      const orders = await fetchOrders(fromStr, toStr);
-      const dailyStats = aggregateOrdersByDay(orders);
-
-      const totalOrders = orders.length;
-      const totalRevenue = orders.reduce((sum, o) => sum + parseFloat(o.total_paid_tax_incl), 0);
+      // Récupère toutes les commandes à chaque appel (pas de cache d'état pour éviter boucle)
+      const allOrders = await fetchOrders();
+      
+      // Filtre selon selectedDate
+      const filteredOrders = filters.selectedDate
+        ? allOrders.filter(order => order.date_add.split(' ')[0] === filters.selectedDate)
+        : allOrders;
+      
+      const dailyStats = aggregateOrdersByDay(allOrders);
+      const totalOrders = filteredOrders.length;
+      const totalRevenue = filteredOrders.reduce((sum, o) => sum + parseFloat(o.total_paid_tax_incl), 0);
       const averageOrderValue = totalOrders === 0 ? 0 : totalRevenue / totalOrders;
-
-      setData({
-        stats: { totalOrders, totalRevenue, averageOrderValue },
-        dailyStats,
-      });
+      
+      setData({ stats: { totalOrders, totalRevenue, averageOrderValue }, dailyStats });
     } catch (err: any) {
-      setError(err.message || 'Erreur lors du chargement des données');
+      setError(err.message || 'Erreur de chargement');
     } finally {
       setLoading(false);
     }
-  }, [preset]);
+  }, [filters]); // plus de dépendance à allOrders
 
   useEffect(() => {
     loadData();

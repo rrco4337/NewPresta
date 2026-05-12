@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const apiClient = axios.create({
-  baseURL: '/api/prestashop',
+  baseURL: '' + (import.meta.env.VITE_API_BASE_URL || '/api'),
   headers: {
     'Accept': 'application/xml',
     'Content-Type': 'application/xml',
@@ -46,8 +46,8 @@ function parseOrdersXml(xmlString: string): OrderFromApi[] {
 export async function fetchOrders(dateFrom?: string, dateTo?: string): Promise<OrderFromApi[]> {
   try {
     // AUCUN paramètre pour tester la connectivité de base
-    const response = await apiClient.get('/orders');
-    console.log('Réponse brute :', response.data);
+    const response = await apiClient.get('/orders/?filter[id_customer]=1&output_format=JSON&display=full');
+    console.log('Réponse brute :', response.data); // log partiel pour éviter d'encombrer la console
     const orders = parseOrdersXml(response.data);
     return orders;
   } catch (error) {

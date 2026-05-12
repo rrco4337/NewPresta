@@ -1,16 +1,18 @@
-export type DailyOrderStat = {
+export interface DailyOrderStat {
   date: string;
   orderCount: number;
   totalAmount: number;
-};
+}
 
-export type DateRangePreset = 'today' | 'last7days' | 'last30days';
-
-export type DashboardData = {
+export interface DashboardData {
   stats: {
     totalOrders: number;
     totalRevenue: number;
     averageOrderValue: number;
   };
   dailyStats: DailyOrderStat[];
-};
+}
+
+export interface DashboardFilters {
+  selectedDate: string | null;
+}

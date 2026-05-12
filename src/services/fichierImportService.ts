@@ -355,6 +355,12 @@ export async function importFichier1(
       }
       taxRateCache.set(reference, taxRate);
 
+      const parsedDate = dateValue ? parseDateFlexible(dateValue) : null;
+      const dateIso = parsedDate
+        ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
+        : '';
+      const dateTag = dateIso ? `<date_availability_produit><![CDATA[${dateIso}]]></date_availability_produit>` : '';
+
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <product>
@@ -371,6 +377,7 @@ export async function importFichier1(
     <description><language id="1"><![CDATA[]]></language></description>
     <description_short><language id="1"><![CDATA[]]></language></description_short>
     <meta_title><language id="1"><![CDATA[${nom}]]></language></meta_title>
+    ${dateTag}
     <associations>
       <categories><category><id><![CDATA[${catId}]]></id></category></categories>
     </associations>

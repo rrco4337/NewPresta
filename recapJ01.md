@@ -136,3 +136,21 @@ Si tu dois modifier le comportement global, les zones à regarder en premier son
 - `src/services/customerService.ts` pour checkout et clients
 - `src/services/produitApi.ts` pour le catalogue
 - `src/services/csvImportService.ts` et `src/services/otherImportService.ts` pour les imports
+
+## Evolutions recentes
+### Page de selection utilisateur (nouvel accueil)
+- L'accueil `"/"` affiche une page de selection d'utilisateur avec cartes, etats de chargement et etat vide.
+- Connexion en 1 clic : selectionne un client, recupere le `secure_key`, puis ouvre la session boutique.
+- Option `Utilisateur anonyme` : acces a la boutique sans compte.
+- Acces admin conserve via un bouton vers `/login`.
+- La liste BackOffice des produits est desormais sur `/products` (routage et navigation ajustes).
+- Fichiers principaux : `src/components/UserSelectPage.tsx`, `src/services/customerService.ts`, `src/App.tsx`, `src/components/AppLayout.tsx`.
+
+### Badges produits HOT / NEW
+- Un badge automatique est calcule a partir de `date_availability_produit` (fallback `date_available`).
+- Regles : `HOT` si < 24h, sinon `NEW` si < 7 jours, sinon aucun badge.
+- Gestion du fuseau horaire et formats de date, avec rejet des dates vides (`0000-00-00`).
+- Affiche sur les cartes boutique, la liste produits BackOffice et la fiche produit.
+- Composant reutilisable et extensible : `src/components/ProductBadge.tsx` + `src/utils/productBadges.ts`.
+- Styles + animation legere : `src/components/ProductBadge.css`.
+- Mapping du champ date dans `src/services/produitApi.ts`.

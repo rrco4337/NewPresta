@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData';
-import { StatsCards } from '../components/dashboard/StatsCards';
-import { SalesChart } from '../components/dashboard/SalesChart';
-import { OrdersTable } from '../components/dashboard/OrdersTable';
-import { DatePickerInput } from '../components/dashboard/DatePickerInput';
-import { DashboardSkeleton } from '../components/dashboard/DashboardSkeleton';
+import { StatsCards } from './dashboard/StatsCards';
+import { OrdersTable } from './dashboard/OrdersTable';
+import { DatePickerInput } from './dashboard/DatePickerInput';
+import { DashboardSkeleton } from './dashboard/DashboardSkeleton';
 
 interface DashboardFilters {
   selectedDate: string | null;
@@ -60,8 +59,6 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Graphique des ventes par jour (toutes dates) */}
-        <SalesChart data={data.dailyStats} />
 
         {/* Tableau récapitulatif par jour (toutes dates) */}
         <OrdersTable dailyStats={data.dailyStats} />

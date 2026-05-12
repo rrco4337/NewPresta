@@ -21,7 +21,7 @@ import CheckoutPage from './components/CheckoutPage';
 import OrderConfirmation from './components/OrderConfirmation';
 import MyOrders from './components/MyOrders';
 import ImportAudit from './components/ImportAudit';
-import DashboardPage from './pages/DashboardPage';
+import DashboardPage from './components/dashboardPage';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {

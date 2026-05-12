@@ -16,6 +16,13 @@ export interface Customer {
   secureKey: string;
 }
 
+export interface CustomerSummary {
+  id: string;
+  email: string;
+  firstname: string;
+  lastname: string;
+}
+
 export interface Address {
   id: string;
   alias: string;
@@ -69,6 +76,29 @@ export async function fetchSecureKey(customerId: string): Promise<string> {
   } catch {
     console.error('[fetchSecureKey] Failed for customer', customerId);
     return '';
+  }
+}
+
+export async function fetchCustomerList(): Promise<CustomerSummary[]> {
+  try {
+    const res = await api.get(
+      '/customers?display=[id,firstname,lastname,email,active]&filter[active]=[1]'
+    );
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const list: CustomerSummary[] = [];
+    doc.querySelectorAll('customer').forEach((el) => {
+      const id = el.querySelector('id')?.textContent?.trim();
+      if (!id) return;
+      list.push({
+        id,
+        email: el.querySelector('email')?.textContent?.trim() ?? '',
+        firstname: el.querySelector('firstname')?.textContent?.trim() ?? '',
+        lastname: el.querySelector('lastname')?.textContent?.trim() ?? '',
+      });
+    });
+    return list;
+  } catch {
+    return [];
   }
 }
 
@@ -284,7 +314,7 @@ export async function createPSOrder(params: {
   <id_lang><![CDATA[1]]></id_lang>
   <id_customer><![CDATA[${params.customerId}]]></id_customer>
   <id_carrier><![CDATA[${params.carrierId}]]></id_carrier>
-  <current_state><![CDATA[1]]></current_state>
+  <current_state><![CDATA[14]]></current_state>  <!-- En attente de paiement -->
   <module><![CDATA[ps_cashondelivery]]></module>
   <payment><![CDATA[Paiement à la livraison]]></payment>
   <invoice_number><![CDATA[0]]></invoice_number>

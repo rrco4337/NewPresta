@@ -1,0 +1,66 @@
+:root {
+  --badge-hot-bg: linear-gradient(135deg, #ff512f, #f09819);
+  --badge-new-bg: linear-gradient(135deg, #38bdf8, #10b981);
+  --badge-hot-shadow: rgba(255, 91, 46, 0.35);
+  --badge-new-shadow: rgba(16, 185, 129, 0.25);
+}
+
+.availability-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: badge-pop 180ms ease-out;
+}
+
+.availability-badge--corner {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.availability-badge--inline {
+  align-self: flex-start;
+}
+
+.availability-badge--hot {
+  color: #fff;
+  background: var(--badge-hot-bg);
+  box-shadow: 0 12px 24px var(--badge-hot-shadow);
+  animation: badge-pop 180ms ease-out, badge-pulse 2s ease-in-out infinite;
+}
+
+.availability-badge--new {
+  color: #0f172a;
+  background: var(--badge-new-bg);
+  box-shadow: 0 10px 20px var(--badge-new-shadow);
+}
+
+@keyframes badge-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes badge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 102, 51, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(255, 102, 51, 0.12);
+  }
+}

@@ -106,51 +106,36 @@ function parseDateFlexible(raw: string): Date | null {
   const value = raw.trim();
   if (!value) return null;
 
-  const direct = Date.parse(value);
-  if (!Number.isNaN(direct)) return new Date(direct);
-
+  // YYYY-MM-DD ou YYYY/MM/DD (ISO, non ambigu) — priorité maximale
   const ymd = value.match(/^([12]\d{3})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/);
   if (ymd) {
     const [, y, mo, d, hh, mm, ss] = ymd;
     return buildDate(
-      parseInt(y, 10),
-      parseInt(mo, 10),
-      parseInt(d, 10),
-      parseInt(hh ?? '0', 10),
-      parseInt(mm ?? '0', 10),
-      parseInt(ss ?? '0', 10),
+      parseInt(y, 10), parseInt(mo, 10), parseInt(d, 10),
+      parseInt(hh ?? '0', 10), parseInt(mm ?? '0', 10), parseInt(ss ?? '0', 10),
     );
   }
 
+  // DD/MM/YYYY ou DD.MM.YYYY (format français — avant Date.parse pour éviter l'inversion MM/DD)
   const dmy = value.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/);
   if (dmy) {
     const [, p1, p2, y, hh, mm, ss] = dmy;
     const a = parseInt(p1, 10);
     const b = parseInt(p2, 10);
     const year = parseInt(y, 10);
-    let day = a;
-    let month = b;
-    if (a <= 12 && b <= 12) {
-      day = a; // format fr par defaut
-      month = b;
-    } else if (a > 12 && b <= 12) {
-      day = a;
-      month = b;
-    } else if (b > 12 && a <= 12) {
-      day = b;
-      month = a;
-    }
+    // Si a > 12 → forcément le jour ; si b > 12 → forcément le mois (impossible, erreur)
+    // Par défaut format français : a = jour, b = mois
+    const day   = a <= 31 ? a : b;
+    const month = a <= 31 ? b : a;
     return buildDate(
-      year,
-      month,
-      day,
-      parseInt(hh ?? '0', 10),
-      parseInt(mm ?? '0', 10),
-      parseInt(ss ?? '0', 10),
+      year, month, day,
+      parseInt(hh ?? '0', 10), parseInt(mm ?? '0', 10), parseInt(ss ?? '0', 10),
     );
   }
 
-  return null;
+  // Dernier recours : laisser Date.parse gérer (ISO 8601 avec timezone, etc.)
+  const direct = Date.parse(value);
+  return Number.isNaN(direct) ? null : new Date(direct);
 }
 
 function parseTaxRate(s: string): number {
@@ -355,6 +340,12 @@ export async function importFichier1(
       }
       taxRateCache.set(reference, taxRate);
 
+      const parsedDate = dateValue ? parseDateFlexible(dateValue) : null;
+      const dateIso = parsedDate
+        ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
+        : '';
+      const dateTag = dateIso ? `<available_date><![CDATA[${dateIso}]]></available_date>` : '';
+
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <product>
@@ -371,6 +362,7 @@ export async function importFichier1(
     <description><language id="1"><![CDATA[]]></language></description>
     <description_short><language id="1"><![CDATA[]]></language></description_short>
     <meta_title><language id="1"><![CDATA[${nom}]]></language></meta_title>
+    ${dateTag}
     <associations>
       <categories><category><id><![CDATA[${catId}]]></id></category></categories>
     </associations>
@@ -568,91 +560,19 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
   }).filter((it) => it.reference);
 }
 
-function mapEtatToPSState(etat: string): number {
-  const e = etat
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // enlève les accents
-    .trim();
+const STATUS_MAP = {
+  CART_ONLY: 'dans le panier',
+  PAID: 'paiement accepté',
+  CANCELLED: 'annulé'
+} as const;
 
-  // 2 = Paiement accepté
-  if (
-    e.includes('paiement accepte') ||
-    e.includes('payment accepted') ||
-    e.includes('fandoavam-bola nekena')
-  ) {
-    return 2;
-  }
+// IDs standards PrestaShop
+const PS_STATE_PAYMENT_ACCEPTED = 2;
+const PS_STATE_CANCELED = 6;
 
-  // 3 = En cours de préparation
-  if (
-    e.includes('preparation') ||
-    e.includes('processing')
-  ) {
-    return 3;
-  }
 
-  // 4 = Expédié
-  if (
-    e.includes('expedie') ||
-    e.includes('shipped')
-  ) {
-    return 4;
-  }
 
-  // 5 = Livré
-  if (
-    e.includes('livre') ||
-    e.includes('delivered')
-  ) {
-    return 5;
-  }
-
-  // 6 = Annulé
-  if (
-    e.includes('annule') ||
-    e.includes('cancel')
-  ) {
-    return 6;
-  }
-
-  // 7 = Remboursé
-  if (
-    e.includes('rembourse') ||
-    e.includes('refund')
-  ) {
-    return 7;
-  }
-
-  // 8 = Erreur paiement
-  if (
-    e.includes('erreur de paiement') ||
-    e.includes('payment error') ||
-    e.includes('hadisoana')
-  ) {
-    return 8;
-  }
-
-  // 13 = En attente paiement livraison
-  if (
-    e.includes('en attente paiement a la livraison') ||
-    e.includes('cash on delivery') ||
-    e.includes('awaiting cash on delivery')
-  ) {
-    return 13;
-  }
-
-  // 14 = En attente de paiement
-  if (
-    e.includes('en attente de paiement') ||
-    e.includes('waiting for payment')
-  ) {
-    return 14;
-  }
-
-  // état par défaut
-  return 13;
-}
+ 
 
 interface ImportCustomer {
   id: string;
@@ -764,73 +684,81 @@ export async function importFichier3(
   onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
   const lines = parseCsvContent(await file.text());
-  const rows  = lines.slice(1).filter((r) => r[1]);
+  const rows = lines.slice(1).filter((r) => r[1]);
   const results: FichierImportResult[] = [];
 
-  const carrierId = '1';
-  const shippingCost = 0;
-
   for (let i = 0; i < rows.length; i++) {
-    const [, nom, email, pwd, adresse, achat, etat] = rows[i];
+    const [, nom, email, pwd, adresse, achat, etatRaw] = rows[i];
     const label = `${nom} (${email})`;
+    const etat = (etatRaw || '').toLowerCase().trim();
+    
     onProgress?.(i, rows.length, label);
 
     try {
+      // 1. Gestion Client & Adresse
       const customer = await resolveCustomer(nom, email, pwd);
-      if (!customer) throw new Error(`Client "${email}" introuvable ou creation impossible`);
+      if (!customer) throw new Error(`Client impossible à créer/trouver`);
 
       const addressId = await ensureAddressForCustomer(customer, adresse ?? '');
-      if (!addressId) throw new Error(`Adresse non creee pour ${email}`);
+      if (!addressId) throw new Error(`Erreur création adresse`);
 
+      // 2. Préparation des items
       const items = parseAchat(achat ?? '');
       const checkoutItems = await buildCheckoutItems(items);
-      if (checkoutItems.length === 0) throw new Error('Aucun achat valide dans la ligne');
+      if (checkoutItems.length === 0) throw new Error('Aucun produit valide');
 
-      // Créer le panier
-      const cartId = await createPSCart(customer.id, addressId, carrierId, checkoutItems);
+      // 3. CRÉATION DU PANIER (Obligatoire pour tous)
+      // On utilise l'ID transporteur 1 par défaut (à adapter)
+      const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems);
       
-      // Créer la commande avec état neutre (1)
-      const orderId = await createPSOrder({
-        customerId: customer.id,
-        addressId,
-        cartId,
-        carrierId,
-        items: checkoutItems,
-        shippingCost,
-      });
-      
-      // Appliquer l'état final (qui va gérer le stock selon sa configuration)
-      const psState = mapEtatToPSState(etat ?? '');
-      if (psState !== null && psState !== 1) { // Ne pas réappliquer l'état neutre
+      let finalId = cartId;
+      let importType = "Panier";
+
+      // 4. TRANSFORMATION EN COMMANDE (Seulement si paiement ou annulé)
+      if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
+        const orderId = await createPSOrder({
+          customerId: customer.id,
+          addressId,
+          cartId,
+          carrierId: '1',
+          items: checkoutItems,
+          shippingCost: 0,
+        });
+
+        // Appliquer le statut spécifique
+        const psState = (etat === STATUS_MAP.PAID) 
+          ? PS_STATE_PAYMENT_ACCEPTED 
+          : PS_STATE_CANCELED;
+
         const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <order_history>
-    <id_order><![CDATA[${orderId}]]></id_order>
-    <id_order_state><![CDATA[${psState}]]></id_order_state>
-    <id_employee><![CDATA[1]]></id_employee>
-  </order_history>
-</prestashop>`;
+          <prestashop>
+            <order_history>
+              <id_order><![CDATA[${orderId}]]></id_order>
+              <id_order_state><![CDATA[${psState}]]></id_order_state>
+              <id_employee><![CDATA[1]]></id_employee>
+            </order_history>
+          </prestashop>`;
+        
         await api.post('/order_histories', statusXml);
+        
+        finalId = orderId;
+        importType = "Commande";
       }
-      
-      // 🔥 NE RIEN FAIRE D'AUTRE - Laisser PrestaShop gérer le stock
-      
-      results.push({ label, success: true, id: orderId });
-      
+
+      results.push({ label: `${label} [${importType}]`, success: true, id: finalId });
+
     } catch (err: any) {
-      console.error('Import fichier3 failed', {
-        label,
-        error: err,
-        response: err?.response?.data,
+      results.push({ 
+        label, 
+        success: false, 
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message 
       });
-      results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message });
     }
     onProgress?.(i + 1, rows.length, label);
   }
-
   return results;
 }
+
 
 // Fonction pour restaurer le stock
 async function restoreStock(productId: string, attributeId: string | undefined, qty: number): Promise<void> {

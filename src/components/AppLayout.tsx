@@ -102,12 +102,12 @@ const navModules: NavModule[] = [
   { label: 'Tableau de bord', path: '/dashboard', icon: <IconGrid />, disabled: true, section: 'Principal' },
   {
     label: 'Produits',
-    path: '/',
+    path: '/products',
     icon: <IconBox />,
     end: true,
     section: 'Catalogue',
     children: [
-      { label: 'Liste des produits', path: '/',                 end: true },
+      { label: 'Liste des produits', path: '/products',          end: true },
       { label: 'Ajouter un produit', path: '/products/add' },
       { label: 'Import CSV',         path: '/products/import' },
     ],

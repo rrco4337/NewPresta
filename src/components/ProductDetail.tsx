@@ -7,6 +7,7 @@ import {
   stockStatus,
   type ShopProduct,
 } from '../services/shopService';
+import ProductBadge from './ProductBadge';
 import './ProductDetail.css';
 
 // ── Image placeholder ─────────────────────────────────────────────────────────
@@ -208,6 +209,10 @@ const ProductDetail: React.FC = () => {
             {product.reference && (
               <p className="detail-ref">Réf : {product.reference}</p>
             )}
+            <ProductBadge
+              dateAvailability={product.date_availability_produit}
+              className="availability-badge--inline"
+            />
           </div>
 
           <div className="detail-price">{formatPrice(product.priceTtc)}</div>

@@ -21,6 +21,7 @@ import CheckoutPage from './components/CheckoutPage';
 import OrderConfirmation from './components/OrderConfirmation';
 import MyOrders from './components/MyOrders';
 import ImportAudit from './components/ImportAudit';
+import DashboardPage from './components/dashboardPage';
 import UserSelectPage from './components/UserSelectPage';
 
 // Résout le titre de page selon la route courante
@@ -187,6 +188,8 @@ function App() {
               path="/shop/confirmation/:id"
               element={<ShopLayout><OrderConfirmation /></ShopLayout>}
             />
+            // À l'intérieur des routes protégées :
+<Route path="/dashboard" element={<DashboardPage />} />
             <Route
               path="/shop/my-orders"
               element={<ShopLayout><MyOrders /></ShopLayout>}

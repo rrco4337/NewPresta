@@ -14,6 +14,11 @@ export type ShopProduct = Product & {
   taxRate: number;
 };
 
+export interface ShopCategory {
+  id: number;
+  name: string;
+}
+
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
 }
@@ -59,11 +64,29 @@ export async function fetchProductImages(productId: string): Promise<string[]> {
   } catch { return []; }
 }
 
+// ── Categories ────────────────────────────────────────────────────────────────
+
+export async function fetchShopCategories(): Promise<ShopCategory[]> {
+  try {
+    const res = await api.get('/categories?display=[id,name]&filter[active]=[1]');
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const cats: ShopCategory[] = [];
+    doc.querySelectorAll('category').forEach(c => {
+      const id = parseInt(c.querySelector(':scope > id')?.textContent ?? '0', 10);
+      const name =
+        c.querySelector('name language')?.textContent?.trim() ??
+        c.querySelector('name')?.textContent?.trim() ?? '';
+      if (id > 2 && name) cats.push({ id, name });
+    });
+    return cats.sort((a, b) => a.name.localeCompare('fr'));
+  } catch { return []; }
+}
+
 // ── Products listing ──────────────────────────────────────────────────────────
 
-export async function fetchShopProducts(): Promise<ShopProduct[]> {
+export async function fetchShopProducts(opts: { categoryId?: number } = {}): Promise<ShopProduct[]> {
   const [products, stockMap] = await Promise.all([
-    productService.getAllProducts({ active: true }),
+    productService.getAllProducts({ active: true, categoryId: opts.categoryId }),
     fetchStockMap(),
   ]);
 

@@ -83,14 +83,14 @@ const ProductCreate: React.FC = () => {
         result = await productService.update(id, formData);
         if (result) {
           setStatus({ type: 'success', msg: `Produit "${result.name}" modifié avec succès!` });
-          setTimeout(() => navigate('/'), 2000);
+          setTimeout(() => navigate('/products'), 2000);
         }
       } else {
         // Mode création
         result = await productService.create(formData);
         if (result) {
           setStatus({ type: 'success', msg: `Produit "${result.name}" créé avec succès (ID: ${result.id})` });
-          setTimeout(() => navigate('/'), 2000);
+          setTimeout(() => navigate('/products'), 2000);
         }
       }
     } catch (err) {
@@ -119,7 +119,7 @@ const ProductCreate: React.FC = () => {
       <div className="form-header">
         <h2>{id ? '✏️ Éditer le produit' : '➕ Créer un produit PrestaShop'}</h2>
         {id && (
-          <button type="button" onClick={() => navigate('/')} className="btn-back">
+          <button type="button" onClick={() => navigate('/products')} className="btn-back">
             ← Retour
           </button>
         )}

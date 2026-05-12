@@ -7,6 +7,7 @@ import {
   stockStatus,
   type ShopProduct,
 } from '../services/shopService';
+import ProductBadge from './ProductBadge';
 
 // ── Image avec fallback ───────────────────────────────────────────────────────
 
@@ -165,7 +166,11 @@ const ShopHome: React.FC = () => {
                   <StockBadge qty={featured.quantity} />
                 </div>
                 <Link to={`/shop/${featured.id}`} className="group mt-4 block">
-                  <div className="aspect-[4/3] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                  <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                    <ProductBadge
+                      dateAvailability={featured.date_availability_produit}
+                      className="availability-badge--corner"
+                    />
                     <ProductImage
                       src={featured.imageUrl}
                       alt={featured.name}
@@ -291,7 +296,11 @@ const ShopHome: React.FC = () => {
                   return (
                     <div key={product.id} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                       <Link to={`/shop/${product.id}`} className="relative">
-                        <div className="aspect-[4/3] overflow-hidden border-b border-slate-200 bg-slate-100">
+                        <div className="relative aspect-[4/3] overflow-hidden border-b border-slate-200 bg-slate-100">
+                          <ProductBadge
+                            dateAvailability={product.date_availability_produit}
+                            className="availability-badge--corner"
+                          />
                           <ProductImage
                             src={product.imageUrl}
                             alt={product.name}

@@ -16,6 +16,13 @@ export interface Customer {
   secureKey: string;
 }
 
+export interface CustomerSummary {
+  id: string;
+  email: string;
+  firstname: string;
+  lastname: string;
+}
+
 export interface Address {
   id: string;
   alias: string;
@@ -69,6 +76,29 @@ export async function fetchSecureKey(customerId: string): Promise<string> {
   } catch {
     console.error('[fetchSecureKey] Failed for customer', customerId);
     return '';
+  }
+}
+
+export async function fetchCustomerList(): Promise<CustomerSummary[]> {
+  try {
+    const res = await api.get(
+      '/customers?display=[id,firstname,lastname,email,active]&filter[active]=[1]'
+    );
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const list: CustomerSummary[] = [];
+    doc.querySelectorAll('customer').forEach((el) => {
+      const id = el.querySelector('id')?.textContent?.trim();
+      if (!id) return;
+      list.push({
+        id,
+        email: el.querySelector('email')?.textContent?.trim() ?? '',
+        firstname: el.querySelector('firstname')?.textContent?.trim() ?? '',
+        lastname: el.querySelector('lastname')?.textContent?.trim() ?? '',
+      });
+    });
+    return list;
+  } catch {
+    return [];
   }
 }
 

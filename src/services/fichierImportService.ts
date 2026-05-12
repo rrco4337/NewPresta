@@ -106,51 +106,36 @@ function parseDateFlexible(raw: string): Date | null {
   const value = raw.trim();
   if (!value) return null;
 
-  const direct = Date.parse(value);
-  if (!Number.isNaN(direct)) return new Date(direct);
-
+  // YYYY-MM-DD ou YYYY/MM/DD (ISO, non ambigu) — priorité maximale
   const ymd = value.match(/^([12]\d{3})[\/.\-](\d{1,2})[\/.\-](\d{1,2})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/);
   if (ymd) {
     const [, y, mo, d, hh, mm, ss] = ymd;
     return buildDate(
-      parseInt(y, 10),
-      parseInt(mo, 10),
-      parseInt(d, 10),
-      parseInt(hh ?? '0', 10),
-      parseInt(mm ?? '0', 10),
-      parseInt(ss ?? '0', 10),
+      parseInt(y, 10), parseInt(mo, 10), parseInt(d, 10),
+      parseInt(hh ?? '0', 10), parseInt(mm ?? '0', 10), parseInt(ss ?? '0', 10),
     );
   }
 
+  // DD/MM/YYYY ou DD.MM.YYYY (format français — avant Date.parse pour éviter l'inversion MM/DD)
   const dmy = value.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/);
   if (dmy) {
     const [, p1, p2, y, hh, mm, ss] = dmy;
     const a = parseInt(p1, 10);
     const b = parseInt(p2, 10);
     const year = parseInt(y, 10);
-    let day = a;
-    let month = b;
-    if (a <= 12 && b <= 12) {
-      day = a; // format fr par defaut
-      month = b;
-    } else if (a > 12 && b <= 12) {
-      day = a;
-      month = b;
-    } else if (b > 12 && a <= 12) {
-      day = b;
-      month = a;
-    }
+    // Si a > 12 → forcément le jour ; si b > 12 → forcément le mois (impossible, erreur)
+    // Par défaut format français : a = jour, b = mois
+    const day   = a <= 31 ? a : b;
+    const month = a <= 31 ? b : a;
     return buildDate(
-      year,
-      month,
-      day,
-      parseInt(hh ?? '0', 10),
-      parseInt(mm ?? '0', 10),
-      parseInt(ss ?? '0', 10),
+      year, month, day,
+      parseInt(hh ?? '0', 10), parseInt(mm ?? '0', 10), parseInt(ss ?? '0', 10),
     );
   }
 
-  return null;
+  // Dernier recours : laisser Date.parse gérer (ISO 8601 avec timezone, etc.)
+  const direct = Date.parse(value);
+  return Number.isNaN(direct) ? null : new Date(direct);
 }
 
 function parseTaxRate(s: string): number {
@@ -359,7 +344,7 @@ export async function importFichier1(
       const dateIso = parsedDate
         ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
         : '';
-      const dateTag = dateIso ? `<date_availability_produit><![CDATA[${dateIso}]]></date_availability_produit>` : '';
+      const dateTag = dateIso ? `<available_date><![CDATA[${dateIso}]]></available_date>` : '';
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">

@@ -65,7 +65,17 @@ const PrestashopMapper = {
     const imageId = firstImage?.id;
     const imageUrl = id && imageId ? `/api/images/products/${id}/${imageId}` : undefined;
     const dateAvailability =
-      p.date_availability_produit || p.date_available || '';
+      p.available_date || p.date_available || '';
+
+    // DEBUG — retirer après vérification
+    if (id === '1' || !dateAvailability) {
+      console.log(`[mapToFrontend] id=${id}`, {
+        available_date: p.available_date,
+        date_available: p.date_available,
+        resolved: dateAvailability || '(vide)',
+        raw_keys: Object.keys(p),
+      });
+    }
 
     return {
       id,
@@ -110,7 +120,7 @@ buildXml: (product: Partial<Product>): string => {
       <wholesale_price><![CDATA[${product.wholesale_price || 0}]]></wholesale_price>
       <reference><![CDATA[${product.reference || ''}]]></reference>
       ${eanTag}
-      ${product.date_availability_produit ? `<date_availability_produit><![CDATA[${product.date_availability_produit}]]></date_availability_produit>` : ''}
+      ${product.date_availability_produit ? `<available_date><![CDATA[${product.date_availability_produit}]]></available_date>` : ''}
       <name><language id="1"><![CDATA[${product.name || ''}]]></language></name>
       <link_rewrite><language id="1"><![CDATA[${linkRewrite}]]></language></link_rewrite>
       <meta_title><language id="1"><![CDATA[${product.meta_title || ''}]]></language></meta_title>

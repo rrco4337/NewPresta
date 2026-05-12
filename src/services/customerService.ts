@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { url } from 'inspector/promises';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -371,18 +372,14 @@ export async function updateStockAfterOrder(items: CheckoutItem[]): Promise<void
 // ── Customer orders ───────────────────────────────────────────────────────────
 export async function getCustomerOrders(customerId: string): Promise<PSCustomerOrder[]> {
   try {
-    // On ajoute le filtre directement dans l'URL pour soulager le serveur
-    const url = `/orders?` + 
-                `display=[id,reference,total_paid,current_state,date_add,id_customer]` +
-                `&filter[id_customer]=[${customerId}]` + // Filtre SQL côté serveur
-                `&sort=[date_add_DESC]`;
+    // Format correct qui fonctionne avec votre PrestaShop
+    const url = `/orders?display=[id,reference,total_paid,current_state,date_add,id_customer]&filter[id_customer]=${customerId}`;
 
     const res = await api.get(url);
     const doc = new DOMParser().parseFromString(res.data, 'text/xml');
     
     const orders: PSCustomerOrder[] = [];
     
-    // Si aucune commande n'est trouvée, PrestaShop peut retourner un XML vide ou sans balise <order>
     doc.querySelectorAll('order').forEach(el => {
       const id = el.querySelector('id')?.textContent?.trim();
       if (!id) return;
@@ -398,7 +395,6 @@ export async function getCustomerOrders(customerId: string): Promise<PSCustomerO
 
     return orders;
   } catch (error) {
-    // Si l'erreur 500 persiste, vérifiez les logs PHP sur le serveur (error_log)
     console.error('Failed to fetch customer orders:', error);
     return [];
   }

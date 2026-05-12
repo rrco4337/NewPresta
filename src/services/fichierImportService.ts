@@ -355,6 +355,15 @@ export async function importFichier1(
       }
       taxRateCache.set(reference, taxRate);
 
+      let availableDate = '';
+      if (dateValue) {
+        const dateParts = dateValue.split('/');
+        if (dateParts.length === 3) {
+          // Convert from DD/MM/YYYY to YYYY-MM-DD (MySQL format)
+          availableDate = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+        }
+      }
+
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <product>
@@ -366,6 +375,7 @@ export async function importFichier1(
     <reference><![CDATA[${reference}]]></reference>
     <price><![CDATA[${ht.toFixed(6)}]]></price>
     <wholesale_price><![CDATA[${wholesalePrice.toFixed(6)}]]></wholesale_price>
+    <available_date><![CDATA[${availableDate}]]></available_date>
     <name><language id="1"><![CDATA[${nom}]]></language></name>
     <link_rewrite><language id="1"><![CDATA[${slugify(nom)}]]></language></link_rewrite>
     <description><language id="1"><![CDATA[]]></language></description>

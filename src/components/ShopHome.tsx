@@ -449,7 +449,7 @@ const ShopHome: React.FC = () => {
                   <div key={product.id} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                     <Link to={`/shop/${product.id}`} className="relative">
                       <div className="relative aspect-[4/3] overflow-hidden border-b border-slate-200 bg-slate-100">
-                        <ProductBadge dateAvailability={product.date_availability_produit} className="availability-badge--corner" />
+                        <ProductBadge dateAvailability={product.date_availability_produit} className="availability-badge--corner" nowMs={nowMs} />
                         <ProductImage src={product.imageUrl} alt={product.name} className="transition duration-500 group-hover:scale-105" />
                       </div>
                       <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-4 opacity-0 transition duration-300 group-hover:opacity-100">

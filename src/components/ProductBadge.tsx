@@ -33,15 +33,17 @@ function subscribe(listener: (now: number) => void) {
 interface ProductBadgeProps {
   dateAvailability?: string | null;
   className?: string;
+  nowMs?: number;
 }
 
-const ProductBadge: React.FC<ProductBadgeProps> = ({ dateAvailability, className }) => {
-  const [nowMs, setNowMs] = useState(() => Date.now());
+const ProductBadge: React.FC<ProductBadgeProps> = ({ dateAvailability, className, nowMs: nowMsProp }) => {
+  const [nowMsInternal, setNowMs] = useState(() => Date.now());
+  const nowMs = nowMsProp ?? nowMsInternal;
 
   useEffect(() => {
-    if (!dateAvailability) return;
+    if (!dateAvailability || nowMsProp !== undefined) return;
     return subscribe(setNowMs);
-  }, [dateAvailability]);
+  }, [dateAvailability, nowMsProp]);
 
   const badge = useMemo(
     () => getProductBadge(dateAvailability, nowMs),

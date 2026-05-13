@@ -53,9 +53,10 @@ const ProductBadge: React.FC<ProductBadgeProps> = ({ dateAvailability, className
   if (!badge) return null;
 
   const badgeClass = `availability-badge availability-badge--${badge.toLowerCase()}`;
+  const label = badge === 'HOT' ? '🔥 HOT' : '✨ NEW';
   return (
     <span className={[badgeClass, className].filter(Boolean).join(' ')}>
-      {badge}
+      {label}
     </span>
   );
 };

@@ -688,9 +688,11 @@ export async function importFichier3(
   const results: FichierImportResult[] = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const [, nom, email, pwd, adresse, achat, etatRaw] = rows[i];
+    const [date, nom, email, pwd, adresse, achat, etatRaw] = rows[i];
     const label = `${nom} (${email})`;
     const etat = (etatRaw || '').toLowerCase().trim();
+    
+    console.log(`Traitement ligne ${i + 1}:`, { date, nom, email, etat }); // Débogage
     
     onProgress?.(i, rows.length, label);
 
@@ -707,15 +709,49 @@ export async function importFichier3(
       const checkoutItems = await buildCheckoutItems(items);
       if (checkoutItems.length === 0) throw new Error('Aucun produit valide');
 
-      // 3. CRÉATION DU PANIER (Obligatoire pour tous)
-      // On utilise l'ID transporteur 1 par défaut (à adapter)
+      // 3. CRÉATION DU PANIER
       const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems);
       
       let finalId = cartId;
       let importType = "Panier";
 
-      // 4. TRANSFORMATION EN COMMANDE (Seulement si paiement ou annulé)
+      // 4. TRANSFORMATION EN COMMANDE
       if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
+        // Conversion ROBUSTE de la date
+        let orderDate = null;
+        
+        if (date && date.trim()) {
+          // Support de plusieurs formats
+          let day, month, year;
+          
+          // Essayer DD/MM/YYYY
+          if (date.includes('/')) {
+            [day, month, year] = date.split('/');
+          } 
+          // Essayer DD-MM-YYYY
+          else if (date.includes('-')) {
+            [day, month, year] = date.split('-');
+          }
+          // Essayer YYYY-MM-DD (déjà formaté)
+          else if (date.includes('-') && date[4] === '-') {
+            [year, month, day] = date.split('-');
+          }
+          
+          if (day && month && year) {
+            // Nettoyer les valeurs
+            day = day.padStart(2, '0');
+            month = month.padStart(2, '0');
+            year = year.padStart(4, '20');
+            
+            orderDate = `${year}-${month}-${day} 00:00:00`;
+            console.log(`Date formatée: ${orderDate}`); // Débogage
+          }
+        }
+        
+        // Date par défaut
+        const finalOrderDate = orderDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
+        console.log(`Date utilisée pour la commande: ${finalOrderDate}`); // Débogage
+
         const orderId = await createPSOrder({
           customerId: customer.id,
           addressId,
@@ -723,9 +759,12 @@ export async function importFichier3(
           carrierId: '1',
           items: checkoutItems,
           shippingCost: 0,
+          dateAdd: finalOrderDate,
         });
 
-        // Appliquer le statut spécifique
+        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalOrderDate}`); // Débogage
+
+        // Appliquer le statut
         const psState = (etat === STATUS_MAP.PAID) 
           ? PS_STATE_PAYMENT_ACCEPTED 
           : PS_STATE_CANCELED;
@@ -736,8 +775,11 @@ export async function importFichier3(
               <id_order><![CDATA[${orderId}]]></id_order>
               <id_order_state><![CDATA[${psState}]]></id_order_state>
               <id_employee><![CDATA[1]]></id_employee>
+              <date_add><![CDATA[${finalOrderDate}]]></date_add>
             </order_history>
           </prestashop>`;
+        
+        console.log(`XML historique: ${statusXml}`); // Débogage
         
         await api.post('/order_histories', statusXml);
         
@@ -748,6 +790,7 @@ export async function importFichier3(
       results.push({ label: `${label} [${importType}]`, success: true, id: finalId });
 
     } catch (err: any) {
+      console.error(`Erreur pour ${label}:`, err); // Débogage
       results.push({ 
         label, 
         success: false, 
@@ -758,7 +801,6 @@ export async function importFichier3(
   }
   return results;
 }
-
 
 // Fonction pour restaurer le stock
 async function restoreStock(productId: string, attributeId: string | undefined, qty: number): Promise<void> {

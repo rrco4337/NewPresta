@@ -126,7 +126,7 @@ export async function fetchPSOrders(): Promise<PSOrder[]> {
     
     // 3️⃣ Récupérer les paniers
     const cartsRes = await api.get('/carts?display=full');
-    const allCarts = parseCartsXml(cartsRes.data);
+    const allCarts = await parseCartsXml(cartsRes.data);
     
     // 4️⃣ 🔥 FILTRER : garder uniquement les paniers NON transformés en commande
     const pendingCarts = allCarts.filter(
@@ -150,38 +150,81 @@ export async function fetchPSOrders(): Promise<PSOrder[]> {
   }
 }
 
-// parseCartsXml retourne les paniers avec leur ID simple
-function parseCartsXml(xmlString: string): Omit<PSOrder, 'customerName'>[] {
+// Cache pour éviter de re-fetcher le même produit plusieurs fois
+const productPriceCache = new Map<string, number>();
+
+async function fetchProductPrice(productId: string): Promise<number> {
+  if (productPriceCache.has(productId)) {
+    return productPriceCache.get(productId)!;
+  }
+
+  try {
+    const res = await api.get(`/products/${productId}?display=full`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+
+    // PrestaShop expose price HT + price_ttc selon la config.
+    // Préfère price_ttc, sinon price (HT).
+    const priceTtc = doc.querySelector('price_tax_incl')?.textContent?.trim();
+    const priceHt  = doc.querySelector('price')?.textContent?.trim();
+
+    const price = parseFloat(priceTtc ?? priceHt ?? '0') || 0;
+    productPriceCache.set(productId, price);
+    return price;
+  } catch {
+    console.warn(`Impossible de récupérer le prix du produit ${productId}`);
+    return 0;
+  }
+}
+
+async function parseCartsXml(
+  xmlString: string
+): Promise<Omit<PSOrder, 'customerName'>[]> {
   const doc = new DOMParser().parseFromString(xmlString, 'text/xml');
-  const carts: Omit<PSOrder, 'customerName'>[] = [];
-  
-  doc.querySelectorAll('cart').forEach((el) => {
-    const id = el.querySelector('id')?.textContent?.trim() ?? '';
-    const customerId = el.querySelector('id_customer')?.textContent?.trim() ?? '';
-    const date = el.querySelector('date_add')?.textContent?.trim() ?? '';
-    
-    // Calcul du montant total
-    let totalPaid = 0;
-    el.querySelectorAll('associations.cart_rows.cart_row').forEach((row) => {
-      const price = parseFloat(row.querySelector('price')?.textContent ?? '0');
-      const qty = parseInt(row.querySelector('quantity')?.textContent ?? '0', 10);
-      totalPaid += price * qty;
-    });
-    
-    if (id) {
-      carts.push({
-        id: id,  // ID simple, pas de préfixe
+  const cartEls = Array.from(doc.querySelectorAll('cart'));
+
+  const carts = await Promise.all(
+    cartEls.map(async (el) => {
+      const id         = el.querySelector('id')?.textContent?.trim() ?? '';
+      const customerId = el.querySelector('id_customer')?.textContent?.trim() ?? '';
+      const date       = el.querySelector('date_add')?.textContent?.trim() ?? '';
+
+      if (!id) return null;
+
+      // cart_rows contient id_product + quantity, mais jamais le prix
+      const rows = Array.from(
+        el.querySelectorAll('associations cart_rows cart_row, cart_rows cart_row, cart_row')
+      );
+
+      // Récupérer le prix de chaque produit (en parallèle, avec cache)
+      const rowTotals = await Promise.all(
+        rows.map(async (row) => {
+          const productId = row.querySelector('id_product')?.textContent?.trim() ?? '';
+          const qty       = parseInt(row.querySelector('quantity')?.textContent?.trim() ?? '0', 10);
+
+          if (!productId || isNaN(qty) || qty === 0) return 0;
+
+          const unitPrice = await fetchProductPrice(productId);
+          return unitPrice * qty;
+        })
+      );
+
+      const totalPaid = rowTotals.reduce((sum, v) => sum + v, 0);
+      console.log(`Cart ${id} → ${rows.length} ligne(s), total calculé : ${totalPaid}`);
+
+      return {
+        id,
         reference: `PANIER-${id}`,
         customerId,
         totalPaid,
         date,
-        currentState: 1,  // "dans le panier"
-      });
-    }
-  });
-  
-  return carts;
+        currentState: 1,
+      } satisfies Omit<PSOrder, 'customerName'>;
+    })
+  );
+
+  return carts.filter((c): c is Omit<PSOrder, 'customerName'> => c !== null);
 }
+// parseCartsXml retourne les paniers avec leur ID simple
 
 export async function updatePSOrderStatus(orderId: string, stateId: number): Promise<boolean> {
   // 🔒 Vérification supplémentaire avant envoi à l'API

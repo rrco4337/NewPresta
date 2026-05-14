@@ -5,6 +5,7 @@ import {
   ALLOWED_PS_STATES,
   PS_STATE_LABELS,
   type PSOrder,
+  transformCartToOrder,
 } from '../services/orderService';
 import './OrderList.css';
 
@@ -105,25 +106,38 @@ const OrderList: React.FC = () => {
     setPendingChange({ order, newValue: newState, oldValue: oldState });
   };
 
-  const handleConfirmChange = async () => {
-    if (!pendingChange) return;
-    setApplying(true);
-    const { order, newValue } = pendingChange;
+  // Dans ton composant OrderList.tsx
 
-    const ok = await updatePSOrderStatus(order.id, newValue);
-    if (ok) {
-      setOrders((prev) =>
-        prev.map((o) =>
-          o.id === order.id
-            ? { ...o, currentState: newValue }
-            : o
-        )
-      );
+const handleConfirmChange = async () => {
+  if (!pendingChange) return;
+  setApplying(true);
+  const { order, newValue, oldValue } = pendingChange;
+
+  try {
+    let success = false;
+    
+    // CAS SPÉCIFIQUE : Panier (1) -> Commande (2 ou 6)
+    if (oldValue === 1 && (newValue === 2 || newValue === 6)) {
+      // Ici, on appelle une méthode spécifique du service
+      // car transformer un panier nécessite souvent de créer l'objet Order
+      success = await transformCartToOrder(order, newValue);
+    } else {
+      // CAS CLASSIQUE : Changement de statut d'une commande existante
+      success = await updatePSOrderStatus(order.id, newValue);
     }
 
+    if (success) {
+      // On rafraîchit la liste complète car l'ID de la commande 
+      // risque d'avoir changé (PrestaShop crée un nouvel ID Order différent du Cart ID)
+      await load(); 
+    }
+  } catch (err) {
+    setError("L'opération a échoué.");
+  } finally {
     setApplying(false);
     setPendingChange(null);
-  };
+  }
+};
 
   const handleCancelChange = () => setPendingChange(null);
 

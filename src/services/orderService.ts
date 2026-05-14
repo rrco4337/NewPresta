@@ -17,6 +17,11 @@ export interface PSOrder {
   totalPaid: number;
   date: string;
   currentState: number;
+  // Ajouts pour la transformation
+  id_address_delivery?: string;
+  id_address_invoice?: string;
+  id_carrier?: string;
+  id_currency?: string;
 }
 
 // 📦 Les 3 statuts selon les spécifications J2
@@ -184,33 +189,35 @@ async function parseCartsXml(
 
   const carts = await Promise.all(
     cartEls.map(async (el) => {
-      const id         = el.querySelector('id')?.textContent?.trim() ?? '';
-      const customerId = el.querySelector('id_customer')?.textContent?.trim() ?? '';
-      const date       = el.querySelector('date_add')?.textContent?.trim() ?? '';
-
+      const id = el.querySelector('id')?.textContent?.trim() ?? '';
       if (!id) return null;
 
-      // cart_rows contient id_product + quantity, mais jamais le prix
+      const customerId = el.querySelector('id_customer')?.textContent?.trim() ?? '';
+      const date = el.querySelector('date_add')?.textContent?.trim() ?? '';
+      
+      // On garantit ici que ce sont des strings (jamais undefined)
+      const id_address_delivery = el.querySelector('id_address_delivery')?.textContent?.trim() ?? '0';
+      const id_address_invoice = el.querySelector('id_address_invoice')?.textContent?.trim() ?? '0';
+      const id_carrier = el.querySelector('id_carrier')?.textContent?.trim() ?? '0';
+      const id_currency = el.querySelector('id_currency')?.textContent?.trim() ?? '1';
+
       const rows = Array.from(
         el.querySelectorAll('associations cart_rows cart_row, cart_rows cart_row, cart_row')
       );
 
-      // Récupérer le prix de chaque produit (en parallèle, avec cache)
       const rowTotals = await Promise.all(
         rows.map(async (row) => {
           const productId = row.querySelector('id_product')?.textContent?.trim() ?? '';
-          const qty       = parseInt(row.querySelector('quantity')?.textContent?.trim() ?? '0', 10);
-
+          const qty = parseInt(row.querySelector('quantity')?.textContent?.trim() ?? '0', 10);
           if (!productId || isNaN(qty) || qty === 0) return 0;
-
           const unitPrice = await fetchProductPrice(productId);
           return unitPrice * qty;
         })
       );
 
       const totalPaid = rowTotals.reduce((sum, v) => sum + v, 0);
-      console.log(`Cart ${id} → ${rows.length} ligne(s), total calculé : ${totalPaid}`);
 
+      // On retourne l'objet directement
       return {
         id,
         reference: `PANIER-${id}`,
@@ -218,13 +225,68 @@ async function parseCartsXml(
         totalPaid,
         date,
         currentState: 1,
-      } satisfies Omit<PSOrder, 'customerName'>;
+        id_address_delivery,
+        id_address_invoice,
+        id_carrier,
+        id_currency
+      };
     })
   );
 
-  return carts.filter((c): c is Omit<PSOrder, 'customerName'> => c !== null);
+  // Correction du filtre : on utilise un type assertion plus simple ici
+  return carts.filter((c): c is NonNullable<typeof c> => c !== null);
 }
 // parseCartsXml retourne les paniers avec leur ID simple
+// orderService.ts
+
+export async function transformCartToOrder(order: PSOrder, newState: number): Promise<boolean> {
+  try {
+    // ── Étape 1 : Créer la commande (sans current_state, PS le gère) ──────────
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order>
+    <id_address_delivery><![CDATA[${order.id_address_delivery}]]></id_address_delivery>
+    <id_address_invoice><![CDATA[${order.id_address_invoice}]]></id_address_invoice>
+    <id_cart><![CDATA[${order.id}]]></id_cart>
+    <id_currency><![CDATA[${order.id_currency || '1'}]]></id_currency>
+    <id_lang><![CDATA[1]]></id_lang>
+    <id_customer><![CDATA[${order.customerId}]]></id_customer>
+    <id_carrier><![CDATA[${order.id_carrier}]]></id_carrier>
+    <module><![CDATA[ps_checkpayment]]></module>
+    <payment><![CDATA[Paiement manuel (Backoffice)]]></payment>
+    <total_paid><![CDATA[${order.totalPaid}]]></total_paid>
+    <total_paid_real><![CDATA[${order.totalPaid}]]></total_paid_real>
+    <total_products><![CDATA[${order.totalPaid}]]></total_products>
+    <total_products_wt><![CDATA[${order.totalPaid}]]></total_products_wt>
+    <conversion_rate><![CDATA[1]]></conversion_rate>
+  </order>
+</prestashop>`;
+
+    const createRes = await api.post('/orders', xml);
+
+    // ── Étape 2 : Extraire le nouvel ID de commande depuis la réponse XML ─────
+    const doc = new DOMParser().parseFromString(createRes.data, 'text/xml');
+    const newOrderId = doc.querySelector('order > id')?.textContent?.trim();
+
+    if (!newOrderId) {
+      console.error('transformCartToOrder: impossible de lire le nouvel ID commande', createRes.data);
+      return false;
+    }
+
+    // ── Étape 3 : Appliquer le bon état via order_histories ───────────────────
+    const stateUpdated = await updatePSOrderStatus(newOrderId, newState);
+
+    if (!stateUpdated) {
+      console.warn(`Commande ${newOrderId} créée mais mise à jour du statut ${newState} échouée.`);
+      // La commande existe quand même, on ne renvoie pas false
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Erreur transformation panier ${order.id}:`, error);
+    return false;
+  }
+}
 
 export async function updatePSOrderStatus(orderId: string, stateId: number): Promise<boolean> {
   // 🔒 Vérification supplémentaire avant envoi à l'API

@@ -99,7 +99,7 @@ interface NavModule {
 
 // ── Navigation ───────────────────────────────────────────────────────────────
 const navModules: NavModule[] = [
-  { label: 'Tableau de bord', path: '/dashboard', icon: <IconGrid />, disabled: true, section: 'Principal' },
+  { label: 'Tableau de bord', path: '/dashboard', icon: <IconGrid />, end: true, section: 'Principal' },
   {
     label: 'Produits',
     path: '/products',

@@ -35,6 +35,7 @@ function resolvePageTitle(pathname: string): string {
   if (pathname === '/orders') return 'Commandes';
   if (pathname === '/reset') return 'Réinitialisation';
   if (pathname === '/audit/import') return 'Audit import';
+  if (pathname === '/dashboard') return 'Tableau de bord';
   return '';
 }
 
@@ -188,8 +189,16 @@ function App() {
               path="/shop/confirmation/:id"
               element={<ShopLayout><OrderConfirmation /></ShopLayout>}
             />
-            // À l'intérieur des routes protégées :
-<Route path="/dashboard" element={<DashboardPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <LayoutWrapper>
+                    <DashboardPage />
+                  </LayoutWrapper>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/shop/my-orders"
               element={<ShopLayout><MyOrders /></ShopLayout>}

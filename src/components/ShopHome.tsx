@@ -194,9 +194,6 @@ const ShopHome: React.FC = () => {
     setBadgeFilter('all'); setDateRef('');
   };
 
-  const featured    = !loading && filtered.length > 0 ? filtered[0] : null;
-  const gridProducts = featured ? filtered.slice(1) : filtered;
-
   return (
     <div className="space-y-12 pb-20 pt-10">
 
@@ -220,36 +217,22 @@ const ShopHome: React.FC = () => {
               ))}
             </div>
           </div>
-          <div className="flex flex-col gap-6">
-            {loading ? (
-              <div className="animate-pulse rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-lg">
-                <div className="h-3 w-32 rounded-full bg-slate-100" />
-                <div className="mt-4 aspect-[4/3] rounded-2xl bg-slate-100" />
-                <div className="mt-4 h-5 w-2/3 rounded-full bg-slate-100" />
-                <div className="mt-3 h-4 w-1/2 rounded-full bg-slate-100" />
-              </div>
-            ) : featured ? (
-              <div className="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-lg">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Produit phare</p>
-                  <StockBadge qty={featured.quantity} />
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: 'Produits', value: loading ? '…' : String(allProducts.length) },
+                { label: 'Catégories', value: loading ? '…' : String(categories.length) },
+                { label: 'Nouveautés', value: loading ? '…' : String(newCount) },
+                { label: 'Tendances', value: loading ? '…' : String(hotCount) },
+              ].map(item => (
+                <div key={item.label} className="rounded-2xl border border-slate-200 bg-white/80 px-4 py-4 shadow-sm">
+                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{item.label}</p>
+                  <p className="mt-1 font-display text-3xl text-slate-900">{item.value}</p>
                 </div>
-                <Link to={`/shop/${featured.id}`} className="group mt-4 block">
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                    <ProductBadge dateAvailability={featured.date_availability_produit} className="availability-badge--corner" />
-                    <ProductImage src={featured.imageUrl} alt={featured.name} className="transition duration-500 group-hover:scale-105" />
-                  </div>
-                  <h2 className="mt-4 font-display text-2xl text-slate-900 transition group-hover:text-slate-700">{featured.name}</h2>
-                  <p className="mt-2 text-sm text-slate-500">{featured.reference || 'Collection exclusive'}</p>
-                </Link>
-                <div className="mt-4 flex items-center justify-between">
-                  <span className="text-lg font-semibold text-slate-900">{formatPrice(featured.priceTtc)}</span>
-                  <Link to={`/shop/${featured.id}`} className="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900">Details</Link>
-                </div>
-              </div>
-            ) : null}
+              ))}
+            </div>
             <div className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-600">
-              {allProducts.length} produit{allProducts.length !== 1 ? 's' : ''} disponibles · Édition 2026
+              Catalogue mis à jour · Édition 2026
             </div>
           </div>
         </div>
@@ -453,7 +436,7 @@ const ShopHome: React.FC = () => {
                 )}
               </div>
             )
-            : gridProducts.map(product => {
+            : filtered.map(product => {
                 const isAdded    = added === product.id;
                 const isDisabled = product.quantity === 0;
                 const btnCls     = isDisabled
@@ -466,7 +449,7 @@ const ShopHome: React.FC = () => {
                   <div key={product.id} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
                     <Link to={`/shop/${product.id}`} className="relative">
                       <div className="relative aspect-[4/3] overflow-hidden border-b border-slate-200 bg-slate-100">
-                        <ProductBadge dateAvailability={product.date_availability_produit} className="availability-badge--corner" />
+                        <ProductBadge dateAvailability={product.date_availability_produit} className="availability-badge--corner" nowMs={nowMs} />
                         <ProductImage src={product.imageUrl} alt={product.name} className="transition duration-500 group-hover:scale-105" />
                       </div>
                       <div className="pointer-events-none absolute inset-0 flex items-end justify-end p-4 opacity-0 transition duration-300 group-hover:opacity-100">

@@ -102,10 +102,11 @@ const ResultsTable: React.FC<ResultsTableProps> = ({ results }) => {
       {err > 0 && (
         <div className="fz-table-wrapper">
           <table className="fz-table">
-            <thead><tr><th>Ligne</th><th>Statut</th><th>Détail</th></tr></thead>
+            <thead><tr><th>N° CSV</th><th>Entrée</th><th>Statut</th><th>Détail</th></tr></thead>
             <tbody>
               {results.filter((r) => !r.success).map((r, i) => (
                 <tr key={i} className="fz-row--err">
+                  <td className="fz-line-num">{r.lineNumber != null ? `L.${r.lineNumber}` : '—'}</td>
                   <td>{r.label}</td>
                   <td><span className="fz-badge fz-badge--err">Erreur</span></td>
                   <td className="fz-detail">{r.error}</td>

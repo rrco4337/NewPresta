@@ -242,6 +242,7 @@ export interface FichierImportResult {
   success: boolean;
   error?: string;
   id?: string;
+  lineNumber?: number;
 }
 
 export type FichierProgressCallback = (done: number, total: number, label: string) => void;
@@ -309,11 +310,13 @@ export async function importFichier1(
   const lines = parseCsvContent(await file.text());
   const header = lines[0] ?? [];
   const cols = resolveFichier1Columns(header);
-  const rows  = lines.slice(1).filter((r) => (r[cols.nomIdx] ?? '').trim() !== ''); // skip header
+  const rows = lines.slice(1)
+    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
+    .filter(({ row }) => (row[cols.nomIdx] ?? '').trim() !== '');
   const results: FichierImportResult[] = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+    const { row, csvLine } = rows[i];
     const nom = row[cols.nomIdx] ?? '';
     const reference = row[cols.referenceIdx] ?? '';
     const dateValue = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
@@ -370,7 +373,7 @@ export async function importFichier1(
 </prestashop>`;
       const id = await postXml('/products', xml);
       productRefCache.set(reference, id);
-      results.push({ label, success: true, id });
+      results.push({ label, success: true, id, lineNumber: csvLine });
     } catch (err: any) {
       console.error('Import fichier1 failed', {
         label,
@@ -378,7 +381,7 @@ export async function importFichier1(
         response: err?.response?.data,
       });
       results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message });
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message, lineNumber: csvLine });
     }
     onProgress?.(i + 1, rows.length, label);
   }
@@ -469,11 +472,14 @@ export async function importFichier2(
   optionValueCache = new Map();
 
   const lines = parseCsvContent(await file.text());
-  const rows  = lines.slice(1).filter((r) => r[0]);
+  const rows = lines.slice(1)
+    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
+    .filter(({ row }) => row[0]);
   const results: FichierImportResult[] = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const [reference, specificite, karazany, stock_str, prix_ttc_str] = rows[i];
+    const { row, csvLine } = rows[i];
+    const [reference, specificite, karazany, stock_str, prix_ttc_str] = row;
     const label = `${reference}${karazany ? ' — ' + karazany : ''}`;
     onProgress?.(i, rows.length, label);
 
@@ -517,12 +523,12 @@ export async function importFichier2(
         // Mettre à jour le stock de la combinaison
         const stockId = await getStockAvailableId(productId, combId);
         if (stockId) await setStock(stockId, productId, combId, qty);
-        results.push({ label, success: true, id: combId });
+        results.push({ label, success: true, id: combId, lineNumber: csvLine });
       } else {
         // Pas de variante : mettre le stock du produit de base
         const stockId = await getStockAvailableId(productId, '0');
         if (stockId) await setStock(stockId, productId, '0', qty);
-        results.push({ label, success: true });
+        results.push({ label, success: true, lineNumber: csvLine });
       }
     } catch (err: any) {
       console.error('Import fichier2 failed', {
@@ -531,7 +537,7 @@ export async function importFichier2(
         response: err?.response?.data,
       });
       results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message });
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message, lineNumber: csvLine });
     }
     onProgress?.(i + 1, rows.length, label);
   }
@@ -569,10 +575,6 @@ const STATUS_MAP = {
 // IDs standards PrestaShop
 const PS_STATE_PAYMENT_ACCEPTED = 2;
 const PS_STATE_CANCELED = 6;
-
-
-
- 
 
 interface ImportCustomer {
   id: string;
@@ -684,15 +686,18 @@ export async function importFichier3(
   onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
   const lines = parseCsvContent(await file.text());
-  const rows = lines.slice(1).filter((r) => r[1]);
+  const rows = lines.slice(1)
+    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
+    .filter(({ row }) => row[1]);
   const results: FichierImportResult[] = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const [date, nom, email, pwd, adresse, achat, etatRaw] = rows[i];
+    const { row, csvLine } = rows[i];
+    const [date, nom, email, pwd, adresse, achat, etatRaw] = row;
     const label = `${nom} (${email})`;
     const etat = (etatRaw || '').toLowerCase().trim();
     
-    console.log(`Traitement ligne ${i + 1}:`, { date, nom, email, etat }); // Débogage
+    console.log(`Traitement ligne ${csvLine}:`, { date, nom, email, etat });
     
     onProgress?.(i, rows.length, label);
 
@@ -744,13 +749,13 @@ export async function importFichier3(
             year = year.padStart(4, '20');
             
             orderDate = `${year}-${month}-${day} 00:00:00`;
-            console.log(`Date formatée: ${orderDate}`); // Débogage
+            console.log(`Date formatée: ${orderDate}`);
           }
         }
         
         // Date par défaut
         const finalOrderDate = orderDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
-        console.log(`Date utilisée pour la commande: ${finalOrderDate}`); // Débogage
+        console.log(`Date utilisée pour la commande: ${finalOrderDate}`);
 
         const orderId = await createPSOrder({
           customerId: customer.id,
@@ -762,7 +767,7 @@ export async function importFichier3(
           dateAdd: finalOrderDate,
         });
 
-        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalOrderDate}`); // Débogage
+        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalOrderDate}`);
 
         // Appliquer le statut
         const psState = (etat === STATUS_MAP.PAID) 
@@ -779,22 +784,25 @@ export async function importFichier3(
             </order_history>
           </prestashop>`;
         
-        console.log(`XML historique: ${statusXml}`); // Débogage
+        console.log(`XML historique: ${statusXml}`);
         
         await api.post('/order_histories', statusXml);
         
         finalId = orderId;
         importType = "Commande";
       }
-
-      results.push({ label: `${label} [${importType}]`, success: true, id: finalId });
+      
+      // 🔥 NE RIEN FAIRE D'AUTRE - Laisser PrestaShop gérer le stock
+      
+      results.push({ label: `${label} [${importType}]`, success: true, id: finalId, lineNumber: csvLine });
 
     } catch (err: any) {
-      console.error(`Erreur pour ${label}:`, err); // Débogage
+      console.error(`Erreur pour ${label}:`, err);
       results.push({ 
         label, 
         success: false, 
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message 
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message,
+        lineNumber: csvLine 
       });
     }
     onProgress?.(i + 1, rows.length, label);
@@ -818,6 +826,7 @@ async function restoreStock(productId: string, attributeId: string | undefined, 
     await setStock(stockId, productId, combId, newQty);
   }
 }
+
 // ==========================================
 // IMAGES ZIP
 // ==========================================
@@ -931,13 +940,15 @@ async function prevalidateFichier1Internal(
   const lines = parseCsvContent(await file.text());
   const header = lines[0] ?? [];
   const cols = resolveFichier1Columns(header);
-  const rows  = lines.slice(1).filter((r) => (r[cols.nomIdx] ?? '').trim() !== '');
+  const rows = lines.slice(1)
+    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
+    .filter(({ row }) => (row[cols.nomIdx] ?? '').trim() !== '');
   const results: FichierImportResult[] = [];
   const productRefs = new Set<string>();
   const taxRateByRef = new Map<string, number>();
 
   for (let i = 0; i < rows.length; i++) {
-    const row = rows[i];
+    const { row, csvLine } = rows[i];
     const nom = row[cols.nomIdx] ?? '';
     const reference = row[cols.referenceIdx] ?? '';
     const dateValue = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
@@ -980,9 +991,9 @@ async function prevalidateFichier1Internal(
     if (errors.length === 0 && reference) {
       productRefs.add(reference);
       taxRateByRef.set(reference, taxRate);
-      results.push({ label, success: true });
+      results.push({ label, success: true, lineNumber: csvLine });
     } else {
-      results.push({ label, success: false, error: errors.join(' | ') });
+      results.push({ label, success: false, error: errors.join(' | '), lineNumber: csvLine });
     }
 
     onProgress?.(i + 1, rows.length, label);
@@ -1002,13 +1013,16 @@ async function prevalidateFichier2Internal(
   combinationExistsCache: Map<string, boolean>,
 ): Promise<{ results: FichierImportResult[]; combinationRefs: Set<string> }> {
   const lines = parseCsvContent(await file.text());
-  const rows  = lines.slice(1).filter((r) => r[0]);
+  const rows = lines.slice(1)
+    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
+    .filter(({ row }) => row[0]);
   const results: FichierImportResult[] = [];
   const combinationRefs = new Set<string>();
   const seenCombRefs = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
-    const [reference, specificite, karazany, stock_str, prix_ttc_str] = rows[i];
+    const { row, csvLine } = rows[i];
+    const [reference, specificite, karazany, stock_str, prix_ttc_str] = row;
     const label = `${reference}${karazany ? ' — ' + karazany : ''}`;
     onProgress?.(i, rows.length, label);
 
@@ -1056,9 +1070,9 @@ async function prevalidateFichier2Internal(
     }
 
     if (errors.length === 0) {
-      results.push({ label, success: true });
+      results.push({ label, success: true, lineNumber: csvLine });
     } else {
-      results.push({ label, success: false, error: errors.join(' | ') });
+      results.push({ label, success: false, error: errors.join(' | '), lineNumber: csvLine });
     }
 
     onProgress?.(i + 1, rows.length, label);
@@ -1076,15 +1090,18 @@ async function prevalidateFichier3Internal(
   customerExistsCache: Map<string, boolean>,
 ): Promise<FichierImportResult[]> {
   const lines = parseCsvContent(await file.text());
-  const rows  = lines.slice(1).filter((r) => r[1]);
+  const rows = lines.slice(1)
+    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
+    .filter(({ row }) => row[1]);
   const results: FichierImportResult[] = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const nom = rows[i][1] ?? '';
-    const email = rows[i][2] ?? '';
-    const pwd = rows[i][3] ?? '';
-    const achat = rows[i][5] ?? '';
-    const dateValue = rows[i][0] ?? '';
+    const { row, csvLine } = rows[i];
+    const nom = row[1] ?? '';
+    const email = row[2] ?? '';
+    const pwd = row[3] ?? '';
+    const achat = row[5] ?? '';
+    const dateValue = row[0] ?? '';
     const label = `${nom} (${email})`;
     onProgress?.(i, rows.length, label);
 
@@ -1130,9 +1147,9 @@ async function prevalidateFichier3Internal(
     }
 
     if (errors.length === 0) {
-      results.push({ label, success: true });
+      results.push({ label, success: true, lineNumber: csvLine });
     } else {
-      results.push({ label, success: false, error: errors.join(' | ') });
+      results.push({ label, success: false, error: errors.join(' | '), lineNumber: csvLine });
     }
 
     onProgress?.(i + 1, rows.length, label);

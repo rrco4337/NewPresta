@@ -116,6 +116,7 @@ const CheckoutPage: React.FC = () => {
     try {
       const checkoutItems = items.map((i) => ({
         id: i.id,
+        attributeId: i.attributeId,
         name: i.name,
         priceHt: i.priceHt,
         priceTtc: i.priceTtc,
@@ -326,8 +327,10 @@ const CheckoutPage: React.FC = () => {
               <div className="review-block">
                 <h3 className="review-block-title">Articles ({items.length})</h3>
                 {items.map(item => (
-                  <div key={item.id} className="review-item">
-                    <span className="review-item-name">{item.name}</span>
+                  <div key={`${item.id}::${item.attributeId ?? ''}`} className="review-item">
+                    <span className="review-item-name">
+                      {item.name}{item.variantLabel ? ` — ${item.variantLabel}` : ''}
+                    </span>
                     <span className="review-item-qty">× {item.qty}</span>
                     <span className="review-item-price">{formatPrice(item.priceTtc * item.qty)}</span>
                   </div>
@@ -393,8 +396,10 @@ const CheckoutPage: React.FC = () => {
         <div className="checkout-sidebar">
           <h3 className="sidebar-title">Votre commande</h3>
           {items.map(item => (
-            <div key={item.id} className="sidebar-item">
-              <span className="sidebar-item-name">{item.name}</span>
+            <div key={`${item.id}::${item.attributeId ?? ''}`} className="sidebar-item">
+              <span className="sidebar-item-name">
+                {item.name}{item.variantLabel ? ` — ${item.variantLabel}` : ''}
+              </span>
               <span className="sidebar-item-qty">×{item.qty}</span>
               <span className="sidebar-item-price">{formatPrice(item.priceTtc * item.qty)}</span>
             </div>

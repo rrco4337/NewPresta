@@ -129,8 +129,9 @@ export async function syncRemoteCart(params: SyncParams): Promise<string | null>
     const rowsXml = items.map(item => `
       <cart_row>
         <id_product><![CDATA[${item.id}]]></id_product>
-        <id_product_attribute><![CDATA[0]]></id_product_attribute>
+        <id_product_attribute><![CDATA[${item.attributeId ?? '0'}]]></id_product_attribute>
         <id_address_delivery><![CDATA[${addressId}]]></id_address_delivery>
+        <id_customization><![CDATA[0]]></id_customization>
         <quantity><![CDATA[${item.qty}]]></quantity>
       </cart_row>`).join('');
 

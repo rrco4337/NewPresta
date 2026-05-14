@@ -1,0 +1,24 @@
+date_availability_produit,nom,reference,prix_ttc,Taxe,categorie,prix_achat
+15/06/2026,Produit OK 1,TEST_OK_01,25,"11,65%",TestCat,"18,5"
+15/06/2026,Produit OK 2,TEST_OK_02,"30,99","5,60%",TestCat,22
+15/06/2026,Produit OK simple,TEST_SIMPLE,10,"11,65%",TestCat,7
+,Produit sans date,TEST_NODATE,12,"11,65%",TestCat,8
+32/13/2025,Date jour et mois invalides,TEST_DATE_INV1,12,"11,65%",TestCat,8
+2025-02-30,Date ISO impossible fev 30,TEST_DATE_INV2,12,"11,65%",TestCat,8
+15/06/2026,Reference en double A,TEST_DUP,15,"11,65%",TestCat,10
+15/06/2026,Reference en double B (meme ref),TEST_DUP,20,"11,65%",TestCat,12
+15/06/2026,Reference deja dans PrestaShop,T_01,12,"11,65%",TestCat,8
+15/06/2026,,TEST_NOM_VIDE,12,"11,65%",TestCat,8
+15/06/2026,Nom avec espaces seuls,TEST_NOM_ESPACES,12,"11,65%",TestCat,8
+15/06/2026,Reference vide,,12,"11,65%",TestCat,8
+15/06/2026,Prix TTC texte,TEST_PRIX_TXT,gratuit,"11,65%",TestCat,8
+15/06/2026,Prix TTC vide,TEST_PRIX_VIDE,,"11,65%",TestCat,8
+15/06/2026,Prix TTC avec symbole euro,TEST_PRIX_EURO,"12,5€","11,65%",TestCat,8
+15/06/2026,Prix TTC negatif PIEGE SILENCIEUX,TEST_PRIX_NEG,-15,"11,65%",TestCat,8
+15/06/2026,Prix TTC zero PIEGE SILENCIEUX,TEST_PRIX_ZERO,0,"11,65%",TestCat,0
+15/06/2026,Taxe texte,TEST_TAXE_TXT,12,vingt%,TestCat,8
+15/06/2026,Taxe decimal sans pourcent PIEGE SILENCIEUX,TEST_TAXE_DEC,12,0.1165,TestCat,8
+15/06/2026,Taxe a zero,TEST_TAXE_ZERO,12,0%,TestCat,0
+15/06/2026,Prix achat invalide,TEST_ACHAT_INV,12,"11,65%",TestCat,abc
+15/06/2026,"Nom avec virgule dedans",TEST_VIRG,12,"11,65%","Cat, Speciale",8
+15/06/2026,   Espaces avant et apres nom   ,TEST_ESPACES,12,"11,65%",TestCat,8

@@ -20,7 +20,7 @@ const Login: React.FC = () => {
   // Si déjà connecté, rediriger vers la page d'origine ou l'accueil
   useEffect(() => {
     if (user) {
-      const from = (location.state as { from?: Location })?.from?.pathname || '/';
+      const from = (location.state as { from?: Location })?.from?.pathname || '/products';
       navigate(from, { replace: true });
     }
   }, [user, navigate, location]);

@@ -1,0 +1,17 @@
+date,nom,email,pwd,adresse,achat,etat
+15/06/2026,Rakoto (client existant sans mdp),rakoto@yopmail.com,,Andoharanofotsy,"[(""TEST_OK_01"";2;""grand"")]",paiement accepté
+15/06/2026,Client nouveau sans mdp,nouveau_sans_mdp@test.mg,,Antananarivo,"[(""TEST_OK_01"";1;""petit"")]",paiement accepté
+15/06/2026,Client nouveau avec mdp,nouveau_ok@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""grand"")]",paiement accepté
+15/06/2026,Email invalide sans arobase,pasdunmail,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""grand"")]",paiement accepté
+15/06/2026,Email invalide coupe apres arobase,abc@,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""grand"")]",paiement accepté
+15/06/2026,,nom_vide@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""grand"")]",paiement accepté
+15/06/2026,Ref produit inconnue dans achat,ref_inconnue@test.mg,Mdp@Test123,Antananarivo,"[(""REF_INEXISTANTE"";1;"""")]",paiement accepté
+15/06/2026,Declinaison inconnue dans achat,decl_inconnue@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""XL"")]",paiement accepté
+15/06/2026,Achat vide crochets,achat_vide@test.mg,Mdp@Test123,Antananarivo,"[]",paiement accepté
+15/06/2026,Achat sans crochets,sans_crochets@test.mg,Mdp@Test123,Antananarivo,"(""TEST_OK_01"";1;""grand"")",paiement accepté
+15/06/2026,Achat virgules au lieu de points virgules PIEGE,virgules@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"",1,""grand"")]",paiement accepté
+15/06/2026,Quantite zero devient 1 PIEGE SILENCIEUX,qty_zero@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";0;""grand"")]",paiement accepté
+15/06/2026,Quantite negative,qty_neg@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";-3;""grand"")]",paiement accepté
+32/13/2025,Date invalide,date_invalide@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""grand"")]",paiement accepté
+15/06/2026,Etat inconnu utilise defaut PIEGE SILENCIEUX,etat_inconnu@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""grand"")]",etat_completement_fantaisiste
+15/06/2026,Multi-achat dont un invalide,multi@test.mg,Mdp@Test123,Antananarivo,"[(""TEST_OK_01"";1;""grand""),(""REF_INEXISTANTE"";2;"""")]",paiement accepté

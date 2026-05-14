@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productService } from '../services/produitApi';
 import type { Product, ProductFilters } from '../services/produitApi';
+import ProductBadge from './ProductBadge';
 import './ProductList.css';
 
 interface Filters {
@@ -270,6 +271,10 @@ const ProductList: React.FC = () => {
           {products.map((product) => (
             <div key={product.id} className="product-card">
               <div className="product-image-wrapper">
+                <ProductBadge
+                  dateAvailability={product.date_availability_produit}
+                  className="availability-badge--corner"
+                />
                 {product.imageUrl ? (
                   <img
                     src={product.imageUrl}

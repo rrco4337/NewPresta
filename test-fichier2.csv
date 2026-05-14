@@ -1,0 +1,16 @@
+reference,specificité,karazany,stock_initial,prix_vente_ttc
+TEST_OK_01,taille,grand,20,28
+TEST_OK_01,taille,petit,15,25
+TEST_OK_02,,,8,
+TEST_SIMPLE,,,5,10
+TEST_REF_INCONNUE,taille,grand,10,30
+TEST_OK_01,taille,grand,5,28
+TEST_OK_01,,karazany_sans_spec,5,
+TEST_OK_01,spec_sans_karazany,,5,
+,taille,ref_vide,10,
+TEST_OK_01,taille,stock_negatif,-3,
+TEST_OK_01,taille,stock_invalide,beaucoup,
+TEST_OK_01,taille,stock_zero,0,25
+TEST_OK_01,taille,prix_invalide,10,abc
+T_01,taille,ngoza,5,15
+TEST_OK_01,taille,quantite_zero_piege_silencieux,0,25

@@ -6,7 +6,9 @@ import {
   formatPrice,
   stockStatus,
   type ShopProduct,
+  type ShopCombination,
 } from '../services/shopService';
+import ProductBadge from './ProductBadge';
 import './ProductDetail.css';
 
 // ── Image placeholder ─────────────────────────────────────────────────────────
@@ -116,12 +118,14 @@ const ProductDetail: React.FC = () => {
   const navigate = useNavigate();
   const { addItem } = useCart();
 
-  const [product, setProduct] = useState<ShopProduct | null>(null);
-  const [images, setImages]   = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
-  const [qty, setQty]         = useState(1);
-  const [added, setAdded]     = useState(false);
+  const [product, setProduct]           = useState<ShopProduct | null>(null);
+  const [images, setImages]             = useState<string[]>([]);
+  const [combinations, setCombinations] = useState<ShopCombination[]>([]);
+  const [selectedCombo, setSelectedCombo] = useState<ShopCombination | null>(null);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState<string | null>(null);
+  const [qty, setQty]                   = useState(1);
+  const [added, setAdded]               = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -132,19 +136,33 @@ const ProductDetail: React.FC = () => {
         if (!data) { setError('Produit introuvable.'); return; }
         setProduct(data.product);
         setImages(data.images);
+        setCombinations(data.combinations);
+        setSelectedCombo(null);
         setQty(1);
       })
       .catch(() => setError('Impossible de charger ce produit.'))
       .finally(() => setLoading(false));
   }, [id]);
 
+  const effectivePriceHt  = product
+    ? product.priceHt + (selectedCombo?.priceImpact ?? 0)
+    : 0;
+  const effectivePriceTtc = product
+    ? effectivePriceHt * (1 + product.taxRate)
+    : 0;
+  const effectiveQty = selectedCombo ? selectedCombo.quantity : (product?.quantity ?? 0);
+  const hasCombinations = combinations.length > 0;
+  const canAdd = effectiveQty > 0 && (!hasCombinations || selectedCombo !== null);
+
   const handleAddToCart = () => {
-    if (!product || product.quantity === 0) return;
+    if (!product || !canAdd) return;
     addItem({
       id: product.id,
+      attributeId: selectedCombo?.id,
+      variantLabel: selectedCombo?.label,
       name: product.name,
-      priceHt: product.priceHt,
-      priceTtc: product.priceTtc,
+      priceHt: effectivePriceHt,
+      priceTtc: effectivePriceTtc,
       taxRate: product.taxRate,
       imageUrl: images[0],
     }, qty);
@@ -184,8 +202,8 @@ const ProductDetail: React.FC = () => {
     );
   }
 
-  const { label: stockLabel, level: stockLevel } = stockStatus(product.quantity);
-  const maxQty = Math.max(1, Math.min(product.quantity, 99));
+  const { label: stockLabel, level: stockLevel } = stockStatus(effectiveQty);
+  const maxQty = Math.max(1, Math.min(effectiveQty, 99));
   const taxPct = Math.round(product.taxRate * 10000) / 100;
 
   return (
@@ -208,13 +226,53 @@ const ProductDetail: React.FC = () => {
             {product.reference && (
               <p className="detail-ref">Réf : {product.reference}</p>
             )}
+            <ProductBadge
+              dateAvailability={product.date_availability_produit}
+              className="availability-badge--inline"
+            />
           </div>
 
-          <div className="detail-price">{formatPrice(product.priceTtc)}</div>
+          <div className="detail-price">{formatPrice(effectivePriceTtc)}</div>
 
           <div className="detail-tax">TVA: {taxPct}%</div>
 
           <span className={`stock-badge stock-badge--${stockLevel}`}>{stockLabel}</span>
+
+          {hasCombinations && (
+            <div className="detail-combinations">
+              <p className="detail-combo-label">Déclinaison</p>
+              <div className="detail-combo-options">
+                {combinations.map(combo => (
+                  <button
+                    key={combo.id}
+                    type="button"
+                    disabled={combo.quantity === 0}
+                    className={[
+                      'detail-combo-btn',
+                      selectedCombo?.id === combo.id ? 'detail-combo-btn--selected' : '',
+                      combo.quantity === 0 ? 'detail-combo-btn--out' : '',
+                    ].join(' ').trim()}
+                    onClick={() => setSelectedCombo(combo)}
+                  >
+                    {combo.label}
+                    {combo.priceImpact > 0 && (
+                      <span className="detail-combo-delta">
+                        {` +${formatPrice(combo.priceImpact * (1 + product.taxRate))}`}
+                      </span>
+                    )}
+                    {combo.priceImpact < 0 && (
+                      <span className="detail-combo-delta detail-combo-delta--neg">
+                        {` ${formatPrice(combo.priceImpact * (1 + product.taxRate))}`}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {!selectedCombo && (
+                <p className="detail-combo-hint">Veuillez sélectionner une déclinaison.</p>
+              )}
+            </div>
+          )}
 
           {product.description_short && (
             <div
@@ -225,7 +283,7 @@ const ProductDetail: React.FC = () => {
 
           {/* ── Quantité + bouton ── */}
           <div className="detail-purchase">
-            {product.quantity > 0 && (
+            {canAdd && (
               <div className="detail-qty-row">
                 <label className="detail-qty-label">Quantité</label>
                 <QtySelector value={qty} max={maxQty} onChange={setQty} />
@@ -234,13 +292,15 @@ const ProductDetail: React.FC = () => {
 
             <button
               className={`btn-add-cart${added ? ' btn-add-cart--added' : ''}`}
-              disabled={product.quantity === 0}
+              disabled={!canAdd}
               onClick={handleAddToCart}
             >
               {added ? (
                 '✓ Ajouté au panier !'
-              ) : product.quantity === 0 ? (
+              ) : effectiveQty === 0 ? (
                 'Rupture de stock'
+              ) : hasCombinations && !selectedCombo ? (
+                'Choisissez une déclinaison'
               ) : (
                 <>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

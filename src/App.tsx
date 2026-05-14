@@ -21,10 +21,12 @@ import CheckoutPage from './components/CheckoutPage';
 import OrderConfirmation from './components/OrderConfirmation';
 import MyOrders from './components/MyOrders';
 import ImportAudit from './components/ImportAudit';
+import DashboardPage from './components/dashboardPage';
+import UserSelectPage from './components/UserSelectPage';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
-  if (pathname === '/') return 'Produits';
+  if (pathname === '/products') return 'Produits';
   if (pathname === '/products/add') return 'Ajouter un produit';
   if (pathname === '/products/import') return 'Import CSV Produits';
   if (pathname.startsWith('/products/')) return 'Modifier le produit';
@@ -53,6 +55,9 @@ function App() {
         <CustomerProvider>
         <CartProvider>
           <Routes>
+            {/* ── Page de selection utilisateur ── */}
+            <Route path="/" element={<UserSelectPage />} />
+
             {/* ── Route publique login ── */}
             <Route path="/login" element={<Login />} />
 
@@ -76,7 +81,7 @@ function App() {
 
             {/* ── BackOffice (protégé, avec sidebar) ── */}
             <Route
-              path="/"
+              path="/products"
               element={
                 <ProtectedRoute>
                   <LayoutWrapper>
@@ -183,6 +188,8 @@ function App() {
               path="/shop/confirmation/:id"
               element={<ShopLayout><OrderConfirmation /></ShopLayout>}
             />
+            // À l'intérieur des routes protégées :
+<Route path="/dashboard" element={<DashboardPage />} />
             <Route
               path="/shop/my-orders"
               element={<ShopLayout><MyOrders /></ShopLayout>}

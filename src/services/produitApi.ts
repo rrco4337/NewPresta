@@ -18,6 +18,7 @@ export interface Product {
   meta_title: string;
   id_category_default: number;
   id_tax_rules_group: number;
+  date_availability_produit?: string;
   imageUrl?: string;
 }
 
@@ -63,6 +64,18 @@ const PrestashopMapper = {
     const firstImage = Array.isArray(imageAssoc) ? imageAssoc[0] : imageAssoc;
     const imageId = firstImage?.id;
     const imageUrl = id && imageId ? `/api/images/products/${id}/${imageId}` : undefined;
+    const dateAvailability =
+      p.available_date || p.date_available || '';
+
+    // DEBUG — retirer après vérification
+    if (id === '1' || !dateAvailability) {
+      console.log(`[mapToFrontend] id=${id}`, {
+        available_date: p.available_date,
+        date_available: p.date_available,
+        resolved: dateAvailability || '(vide)',
+        raw_keys: Object.keys(p),
+      });
+    }
 
     return {
       id,
@@ -78,6 +91,7 @@ const PrestashopMapper = {
       meta_title: PrestashopMapper.getLangValue(p.meta_title),
       id_category_default: parseInt(p.id_category_default || '2'),
       id_tax_rules_group: parseInt(p.id_tax_rules_group || '1'),
+      date_availability_produit: dateAvailability ? String(dateAvailability) : undefined,
       imageUrl,
     };
   },
@@ -105,7 +119,8 @@ buildXml: (product: Partial<Product>): string => {
       <price><![CDATA[${product.price || 0}]]></price>
       <wholesale_price><![CDATA[${product.wholesale_price || 0}]]></wholesale_price>
       <reference><![CDATA[${product.reference || ''}]]></reference>
-      ${eanTag} 
+      ${eanTag}
+      ${product.date_availability_produit ? `<available_date><![CDATA[${product.date_availability_produit}]]></available_date>` : ''}
       <name><language id="1"><![CDATA[${product.name || ''}]]></language></name>
       <link_rewrite><language id="1"><![CDATA[${linkRewrite}]]></language></link_rewrite>
       <meta_title><language id="1"><![CDATA[${product.meta_title || ''}]]></language></meta_title>

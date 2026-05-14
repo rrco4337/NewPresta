@@ -1,0 +1,80 @@
+:root {
+  --badge-hot-bg: linear-gradient(135deg, #ff4500, #ff8c00);
+  --badge-new-bg: linear-gradient(135deg, #0ea5e9, #06b6d4);
+  --badge-hot-shadow: rgba(255, 69, 0, 0.55);
+  --badge-new-shadow: rgba(14, 165, 233, 0.45);
+}
+
+.availability-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: badge-pop 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(4px);
+}
+
+.availability-badge--corner {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.availability-badge--inline {
+  align-self: flex-start;
+}
+
+.availability-badge--hot {
+  color: #fff;
+  background: var(--badge-hot-bg);
+  box-shadow:
+    0 0 0 2px rgba(255, 69, 0, 0.2),
+    0 4px 14px var(--badge-hot-shadow);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  animation:
+    badge-pop 220ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    badge-pulse 1.8s ease-in-out infinite;
+}
+
+.availability-badge--new {
+  color: #fff;
+  background: var(--badge-new-bg);
+  box-shadow:
+    0 0 0 2px rgba(14, 165, 233, 0.2),
+    0 4px 14px var(--badge-new-shadow);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes badge-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes badge-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgba(255, 69, 0, 0.2),
+      0 4px 14px var(--badge-hot-shadow);
+  }
+  50% {
+    box-shadow:
+      0 0 0 5px rgba(255, 69, 0, 0.12),
+      0 4px 20px rgba(255, 100, 0, 0.6);
+  }
+}

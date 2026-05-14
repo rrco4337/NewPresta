@@ -14,6 +14,18 @@ export type ShopProduct = Product & {
   taxRate: number;
 };
 
+export interface ShopCombination {
+  id: string;
+  label: string;
+  priceImpact: number;
+  quantity: number;
+}
+
+export interface ShopCategory {
+  id: number;
+  name: string;
+}
+
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
 }
@@ -59,11 +71,29 @@ export async function fetchProductImages(productId: string): Promise<string[]> {
   } catch { return []; }
 }
 
+// ── Categories ────────────────────────────────────────────────────────────────
+
+export async function fetchShopCategories(): Promise<ShopCategory[]> {
+  try {
+    const res = await api.get('/categories?display=[id,name]&filter[active]=[1]');
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const cats: ShopCategory[] = [];
+    doc.querySelectorAll('category').forEach(c => {
+      const id = parseInt(c.querySelector(':scope > id')?.textContent ?? '0', 10);
+      const name =
+        c.querySelector('name language')?.textContent?.trim() ??
+        c.querySelector('name')?.textContent?.trim() ?? '';
+      if (id > 2 && name) cats.push({ id, name });
+    });
+    return cats.sort((a, b) => a.name.localeCompare('fr'));
+  } catch { return []; }
+}
+
 // ── Products listing ──────────────────────────────────────────────────────────
 
-export async function fetchShopProducts(): Promise<ShopProduct[]> {
+export async function fetchShopProducts(opts: { categoryId?: number } = {}): Promise<ShopProduct[]> {
   const [products, stockMap] = await Promise.all([
-    productService.getAllProducts({ active: true }),
+    productService.getAllProducts({ active: true, categoryId: opts.categoryId }),
     fetchStockMap(),
   ]);
 
@@ -92,16 +122,70 @@ export async function fetchShopProducts(): Promise<ShopProduct[]> {
   });
 }
 
+// ── Combinations ──────────────────────────────────────────────────────────────
+
+async function fetchProductCombinations(productId: string): Promise<ShopCombination[]> {
+  try {
+    const [combRes, stockRes, ovRes] = await Promise.all([
+      api.get(`/combinations?filter[id_product]=[${productId}]&display=full`),
+      api.get(`/stock_availables?filter[id_product]=[${productId}]&display=[id,id_product_attribute,quantity]`),
+      api.get('/product_option_values?display=[id,name]'),
+    ]);
+
+    // Parse combinations
+    const combDoc = new DOMParser().parseFromString(combRes.data, 'text/xml');
+    const combEls = Array.from(combDoc.querySelectorAll('combination'));
+    if (combEls.length === 0) return [];
+
+    type RawCombo = { id: string; priceImpact: number; optionValueIds: string[] };
+    const rawCombos: RawCombo[] = combEls.map(el => ({
+      id: el.querySelector(':scope > id')?.textContent?.trim() ?? '',
+      priceImpact: parseFloat(el.querySelector(':scope > price')?.textContent ?? '0'),
+      optionValueIds: Array.from(el.querySelectorAll('product_option_value id'))
+        .map(x => x.textContent?.trim() ?? '').filter(Boolean),
+    })).filter(c => c.id);
+
+    // Parse stock per combination
+    const stockDoc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
+    const stockMap = new Map<string, number>();
+    stockDoc.querySelectorAll('stock_available').forEach(el => {
+      const attr = el.querySelector('id_product_attribute')?.textContent?.trim() ?? '';
+      const qty = parseInt(el.querySelector('quantity')?.textContent ?? '0', 10);
+      if (attr && attr !== '0') stockMap.set(attr, qty);
+    });
+
+    // Parse option value names
+    const ovDoc = new DOMParser().parseFromString(ovRes.data, 'text/xml');
+    const valueNames = new Map<string, string>();
+    ovDoc.querySelectorAll('product_option_value').forEach(el => {
+      const id = el.querySelector(':scope > id')?.textContent?.trim() ?? '';
+      const name = el.querySelector('name language')?.textContent?.trim()
+        ?? el.querySelector('name')?.textContent?.trim() ?? '';
+      if (id && name) valueNames.set(id, name);
+    });
+
+    return rawCombos.map(c => ({
+      id: c.id,
+      label: c.optionValueIds.map(vid => valueNames.get(vid) ?? vid).join(' / ') || `Déclinaison ${c.id}`,
+      priceImpact: c.priceImpact,
+      quantity: stockMap.get(c.id) ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ── Product detail ────────────────────────────────────────────────────────────
 
 export async function fetchShopProductDetail(
   id: string
-): Promise<{ product: ShopProduct; images: string[] } | null> {
+): Promise<{ product: ShopProduct; images: string[]; combinations: ShopCombination[] } | null> {
   try {
-    const [product, stockMap, images] = await Promise.all([
+    const [product, stockMap, images, combinations] = await Promise.all([
       productService.getProduct(id),
       fetchStockMap(),
       fetchProductImages(id),
+      fetchProductCombinations(id),
     ]);
     if (!product) return null;
     const taxRate = await getTaxRateByGroup(product.id_tax_rules_group);
@@ -117,6 +201,7 @@ export async function fetchShopProductDetail(
         taxRate,
       },
       images: allImages,
+      combinations,
     };
   } catch { return null; }
 }

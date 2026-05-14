@@ -266,9 +266,6 @@ export async function createPSCart(
   if (!id) throw new Error('Échec de création du panier');
   return id;
 }
-
-// ── Order ─────────────────────────────────────────────────────────────────────
-
 export async function createPSOrder(params: {
   customerId: string;
   addressId: string;
@@ -276,6 +273,7 @@ export async function createPSOrder(params: {
   carrierId: string;
   items: CheckoutItem[];
   shippingCost: number;
+  dateAdd?: string; 
 }): Promise<string> {
   const totalProductsHt = params.items.reduce((s, i) => s + i.priceHt * i.qty, 0);
   const totalProductsTtc = params.items.reduce((s, i) => s + i.priceTtc * i.qty, 0);
@@ -284,7 +282,8 @@ export async function createPSOrder(params: {
   const shippingTtc = params.shippingCost;
   const totalPaidTtc = totalProductsTtc + shippingTtc;
   const totalPaidHt = totalProductsHt + shippingHt;
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const now = params.dateAdd || new Date().toISOString().slice(0, 19).replace('T', ' ');
+
   const secureKey = Array.from(crypto.getRandomValues(new Uint8Array(16)))
     .map(b => b.toString(16).padStart(2, '0')).join('');
 
@@ -314,7 +313,7 @@ export async function createPSOrder(params: {
   <id_lang><![CDATA[1]]></id_lang>
   <id_customer><![CDATA[${params.customerId}]]></id_customer>
   <id_carrier><![CDATA[${params.carrierId}]]></id_carrier>
-  <current_state><![CDATA[14]]></current_state>  <!-- En attente de paiement -->
+  <current_state><![CDATA[14]]></current_state>
   <module><![CDATA[ps_cashondelivery]]></module>
   <payment><![CDATA[Paiement à la livraison]]></payment>
   <invoice_number><![CDATA[0]]></invoice_number>
@@ -360,12 +359,50 @@ export async function createPSOrder(params: {
 </order>
 </prestashop>`;
 
+  // Création de la commande
   const res = await api.post('/orders', xml);
   const doc = new DOMParser().parseFromString(res.data, 'text/xml');
   const id = doc.querySelector('order > id')?.textContent?.trim();
+  
   if (!id) throw new Error('Échec de création de la commande');
+
+  // ✅ FIX : Forcer la date après création car PrestaShop ignore date_add au POST
+   if (params.dateAdd) {
+    try {
+      console.log(`Récupération commande ${id} pour mise à jour date...`);
+      
+      // 1. Récupérer le XML complet de la commande créée
+      const getRes = await api.get(`/orders/${id}`);
+      let orderXml = getRes.data as string;
+      
+      // 2. Remplacer date_add et date_upd dans le XML retourné
+      orderXml = orderXml
+        .replace(
+          /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
+          `<date_add><![CDATA[${params.dateAdd}]]></date_add>`
+        )
+        .replace(
+          /<date_upd><!\[CDATA\[.*?\]\]><\/date_upd>/,
+          `<date_upd><![CDATA[${params.dateAdd}]]></date_upd>`
+        );
+
+      // 3. PUT avec le XML complet modifié
+      await api.put(`/orders/${id}`, orderXml);
+      console.log(`✅ Date mise à jour pour commande ${id}: ${params.dateAdd}`);
+      
+    } catch (updateError: any) {
+      console.warn(`⚠️ Impossible de corriger la date de la commande ${id}:`, 
+        updateError?.response?.data ?? updateError.message);
+      // Non bloquant
+    }
+  }
+
+  
+  
   return id;
 }
+// ── Order ─────────────────────────────────────────────────────────────────────
+
 
 // ── Stock ─────────────────────────────────────────────────────────────────────
 

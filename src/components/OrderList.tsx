@@ -26,6 +26,8 @@ function psStatusLabel(state: number): string {
 }
 
 function orderStatusClass(state: number): string {
+  // Nouvel état "dans le panier" (exemple: state = 1)
+  if (state === 1) return 'status-badge--cart';
   if (state === 2) return 'status-badge--paid';
   if (state === 8) return 'status-badge--error';
   if (state === 6) return 'status-badge--cancelled';
@@ -43,6 +45,7 @@ const OrderList: React.FC = () => {
   const [pendingChange, setPendingChange] = useState<{
     order: PSOrder;
     newValue: number;
+    oldValue: number;
   } | null>(null);
   const [applying, setApplying] = useState(false);
 
@@ -63,9 +66,43 @@ const OrderList: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Quand l'utilisateur choisit un nouveau statut dans le select
+  // Vérifier si la transition est autorisée
+  const isTransitionAllowed = (oldState: number, newState: number): boolean => {
+    // Règle: "dans le panier" (1) → paiement effectué (2) ou annulé (6) : OK
+    if (oldState === 1 && (newState === 2 || newState === 6)) {
+      return true;
+    }
+    // paiement effectué (2) → annulé (6) : OK
+    if (oldState === 2 && newState === 6) {
+      return true;
+    }
+    // annulé (6) → paiement effectué (2) : rare mais possible
+    if (oldState === 6 && newState === 2) {
+      return true;
+    }
+    // Même état : pas de changement
+    if (oldState === newState) {
+      return false;
+    }
+    // TOUT VERS "dans le panier" (1) : INTERDIT
+    if (newState === 1) {
+      return false;
+    }
+    // Autres cas non autorisés
+    return false;
+  };
+
   const handleSelectChange = (order: PSOrder, newValue: string) => {
-    setPendingChange({ order, newValue: parseInt(newValue, 10) });
+    const newState = parseInt(newValue, 10);
+    const oldState = order.currentState;
+    
+    // Vérifier si la transition est autorisée
+    if (!isTransitionAllowed(oldState, newState)) {
+      alert(`Transition impossible : "${psStatusLabel(oldState)}" → "${psStatusLabel(newState)}" n'est pas autorisée.`);
+      return;
+    }
+    
+    setPendingChange({ order, newValue: newState, oldValue: oldState });
   };
 
   const handleConfirmChange = async () => {
@@ -90,6 +127,19 @@ const OrderList: React.FC = () => {
 
   const handleCancelChange = () => setPendingChange(null);
 
+  // Déterminer les options disponibles selon l'état actuel
+  const getAvailableOptions = (currentState: number): { value: number; label: string }[] => {
+    const allOptions = ALLOWED_PS_STATES;
+    
+    // Filtrer selon les transitions autorisées
+    return allOptions.filter(opt => {
+      // Même état : on le garde (option courante)
+      if (opt.value === currentState) return true;
+      // Vérifier si la transition est autorisée
+      return isTransitionAllowed(currentState, opt.value);
+    });
+  };
+
   // ── Rendu ─────────────────────────────────────────────────────────────────────
 
   return (
@@ -102,6 +152,11 @@ const OrderList: React.FC = () => {
             <p className="orders-modal-text">
               Modifier le statut de la commande <strong>#{pendingChange.order.reference || pendingChange.order.id}</strong> ?
             </p>
+            <div className="orders-modal-state-change">
+              <span className="old-state">{psStatusLabel(pendingChange.oldValue)}</span>
+              <span className="arrow">→</span>
+              <span className="new-state">{psStatusLabel(pendingChange.newValue)}</span>
+            </div>
             <div className="orders-modal-actions">
               <button className="btn btn-secondary" onClick={handleCancelChange} disabled={applying}>
                 Annuler
@@ -118,7 +173,9 @@ const OrderList: React.FC = () => {
         <button className="btn btn-secondary" onClick={load} disabled={loading}>
           {loading ? 'Chargement…' : 'Actualiser'}
         </button>
-        <span className="orders-count">{orders.length} commande(s)</span>
+        <span className="orders-count">
+          {orders.length} élément(s) ({orders.filter(o => o.currentState === 1).length} panier(s), {orders.filter(o => o.currentState === 2).length} payée(s), {orders.filter(o => o.currentState === 6).length} annulée(s))
+        </span>
       </div>
 
       {error && <p className="orders-error">{error}</p>}
@@ -126,13 +183,13 @@ const OrderList: React.FC = () => {
       {loading && orders.length === 0 ? (
         <div className="orders-loading">Chargement des commandes…</div>
       ) : orders.length === 0 ? (
-        <div className="orders-empty">Aucune commande trouvée.</div>
+        <div className="orders-empty">Aucune commande ou panier trouvé.</div>
       ) : (
         <div className="orders-table-wrapper">
           <table className="orders-table">
             <thead>
               <tr>
-                <th>N° commande</th>
+                <th>N°</th>
                 <th>Client</th>
                 <th>Montant TTC</th>
                 <th>Date</th>
@@ -143,10 +200,14 @@ const OrderList: React.FC = () => {
             <tbody>
               {orders.map((order) => {
                 const currentValue = String(order.currentState);
+                const availableOptions = getAvailableOptions(order.currentState);
 
                 return (
-                  <tr key={order.id}>
-                    <td className="orders-cell-ref">#{order.reference || order.id}</td>
+                  <tr key={order.id} className={order.currentState === 1 ? 'order-row--cart' : ''}>
+                    <td className="orders-cell-ref">
+                      {order.currentState === 1 && <span className="cart-icon">🛒</span>}
+                      #{order.reference || order.id}
+                    </td>
                     <td>{order.customerName}</td>
                     <td className="orders-cell-amount">{formatAmount(order.totalPaid)}</td>
                     <td>{formatDate(order.date)}</td>
@@ -161,13 +222,7 @@ const OrderList: React.FC = () => {
                         value={currentValue}
                         onChange={(e) => handleSelectChange(order, e.target.value)}
                       >
-                        {/* Option placeholder si statut courant n'est pas dans ALLOWED */}
-                        {!ALLOWED_PS_STATES.some((o) => String(o.value) === currentValue) && (
-                          <option value={currentValue} disabled>
-                            {psStatusLabel(order.currentState)}
-                          </option>
-                        )}
-                        {ALLOWED_PS_STATES.map((opt) => (
+                        {availableOptions.map((opt) => (
                           <option key={opt.value} value={opt.value}>
                             {opt.label}
                           </option>

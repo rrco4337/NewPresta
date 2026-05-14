@@ -566,91 +566,15 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
   }).filter((it) => it.reference);
 }
 
-function mapEtatToPSState(etat: string): number {
-  const e = etat
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '') // enlève les accents
-    .trim();
+const STATUS_MAP = {
+  CART_ONLY: 'dans le panier',
+  PAID: 'paiement accepté',
+  CANCELLED: 'annulé'
+} as const;
 
-  // 2 = Paiement accepté
-  if (
-    e.includes('paiement accepte') ||
-    e.includes('payment accepted') ||
-    e.includes('fandoavam-bola nekena')
-  ) {
-    return 2;
-  }
-
-  // 3 = En cours de préparation
-  if (
-    e.includes('preparation') ||
-    e.includes('processing')
-  ) {
-    return 3;
-  }
-
-  // 4 = Expédié
-  if (
-    e.includes('expedie') ||
-    e.includes('shipped')
-  ) {
-    return 4;
-  }
-
-  // 5 = Livré
-  if (
-    e.includes('livre') ||
-    e.includes('delivered')
-  ) {
-    return 5;
-  }
-
-  // 6 = Annulé
-  if (
-    e.includes('annule') ||
-    e.includes('cancel')
-  ) {
-    return 6;
-  }
-
-  // 7 = Remboursé
-  if (
-    e.includes('rembourse') ||
-    e.includes('refund')
-  ) {
-    return 7;
-  }
-
-  // 8 = Erreur paiement
-  if (
-    e.includes('erreur de paiement') ||
-    e.includes('payment error') ||
-    e.includes('hadisoana')
-  ) {
-    return 8;
-  }
-
-  // 13 = En attente paiement livraison
-  if (
-    e.includes('en attente paiement a la livraison') ||
-    e.includes('cash on delivery') ||
-    e.includes('awaiting cash on delivery')
-  ) {
-    return 13;
-  }
-
-  // 14 = En attente de paiement
-  if (
-    e.includes('en attente de paiement') ||
-    e.includes('waiting for payment')
-  ) {
-    return 14;
-  }
-
-  // état par défaut
-  return 13;
-}
+// IDs standards PrestaShop
+const PS_STATE_PAYMENT_ACCEPTED = 2;
+const PS_STATE_CANCELED = 6;
 
 interface ImportCustomer {
   id: string;
@@ -767,69 +691,122 @@ export async function importFichier3(
     .filter(({ row }) => row[1]);
   const results: FichierImportResult[] = [];
 
-  const carrierId = '1';
-  const shippingCost = 0;
-
   for (let i = 0; i < rows.length; i++) {
     const { row, csvLine } = rows[i];
-    const [, nom, email, pwd, adresse, achat, etat] = row;
+    const [date, nom, email, pwd, adresse, achat, etatRaw] = row;
     const label = `${nom} (${email})`;
+    const etat = (etatRaw || '').toLowerCase().trim();
+    
+    console.log(`Traitement ligne ${csvLine}:`, { date, nom, email, etat });
+    
     onProgress?.(i, rows.length, label);
 
     try {
+      // 1. Gestion Client & Adresse
       const customer = await resolveCustomer(nom, email, pwd);
-      if (!customer) throw new Error(`Client "${email}" introuvable ou creation impossible`);
+      if (!customer) throw new Error(`Client impossible à créer/trouver`);
 
       const addressId = await ensureAddressForCustomer(customer, adresse ?? '');
-      if (!addressId) throw new Error(`Adresse non creee pour ${email}`);
+      if (!addressId) throw new Error(`Erreur création adresse`);
 
+      // 2. Préparation des items
       const items = parseAchat(achat ?? '');
       const checkoutItems = await buildCheckoutItems(items);
-      if (checkoutItems.length === 0) throw new Error('Aucun achat valide dans la ligne');
+      if (checkoutItems.length === 0) throw new Error('Aucun produit valide');
 
-      // Créer le panier
-      const cartId = await createPSCart(customer.id, addressId, carrierId, checkoutItems);
+      // 3. CRÉATION DU PANIER
+      const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems);
       
-      // Créer la commande avec état neutre (1)
-      const orderId = await createPSOrder({
-        customerId: customer.id,
-        addressId,
-        cartId,
-        carrierId,
-        items: checkoutItems,
-        shippingCost,
-      });
-      
-      // Appliquer l'état final (qui va gérer le stock selon sa configuration)
-      const psState = mapEtatToPSState(etat ?? '');
-      if (psState !== null && psState !== 1) { // Ne pas réappliquer l'état neutre
+      let finalId = cartId;
+      let importType = "Panier";
+
+      // 4. TRANSFORMATION EN COMMANDE
+      if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
+        // Conversion ROBUSTE de la date
+        let orderDate = null;
+        
+        if (date && date.trim()) {
+          // Support de plusieurs formats
+          let day, month, year;
+          
+          // Essayer DD/MM/YYYY
+          if (date.includes('/')) {
+            [day, month, year] = date.split('/');
+          } 
+          // Essayer DD-MM-YYYY
+          else if (date.includes('-')) {
+            [day, month, year] = date.split('-');
+          }
+          // Essayer YYYY-MM-DD (déjà formaté)
+          else if (date.includes('-') && date[4] === '-') {
+            [year, month, day] = date.split('-');
+          }
+          
+          if (day && month && year) {
+            // Nettoyer les valeurs
+            day = day.padStart(2, '0');
+            month = month.padStart(2, '0');
+            year = year.padStart(4, '20');
+            
+            orderDate = `${year}-${month}-${day} 00:00:00`;
+            console.log(`Date formatée: ${orderDate}`);
+          }
+        }
+        
+        // Date par défaut
+        const finalOrderDate = orderDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
+        console.log(`Date utilisée pour la commande: ${finalOrderDate}`);
+
+        const orderId = await createPSOrder({
+          customerId: customer.id,
+          addressId,
+          cartId,
+          carrierId: '1',
+          items: checkoutItems,
+          shippingCost: 0,
+          dateAdd: finalOrderDate,
+        });
+
+        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalOrderDate}`);
+
+        // Appliquer le statut
+        const psState = (etat === STATUS_MAP.PAID) 
+          ? PS_STATE_PAYMENT_ACCEPTED 
+          : PS_STATE_CANCELED;
+
         const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <order_history>
-    <id_order><![CDATA[${orderId}]]></id_order>
-    <id_order_state><![CDATA[${psState}]]></id_order_state>
-    <id_employee><![CDATA[1]]></id_employee>
-  </order_history>
-</prestashop>`;
+          <prestashop>
+            <order_history>
+              <id_order><![CDATA[${orderId}]]></id_order>
+              <id_order_state><![CDATA[${psState}]]></id_order_state>
+              <id_employee><![CDATA[1]]></id_employee>
+              <date_add><![CDATA[${finalOrderDate}]]></date_add>
+            </order_history>
+          </prestashop>`;
+        
+        console.log(`XML historique: ${statusXml}`);
+        
         await api.post('/order_histories', statusXml);
+        
+        finalId = orderId;
+        importType = "Commande";
       }
       
       // 🔥 NE RIEN FAIRE D'AUTRE - Laisser PrestaShop gérer le stock
       
-      results.push({ label, success: true, id: orderId, lineNumber: csvLine });
+      results.push({ label: `${label} [${importType}]`, success: true, id: finalId, lineNumber: csvLine });
 
     } catch (err: any) {
-      console.error('Import fichier3 failed', {
-        label,
-        error: err,
-        response: err?.response?.data,
+      console.error(`Erreur pour ${label}:`, err);
+      results.push({ 
+        label, 
+        success: false, 
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message,
+        lineNumber: csvLine 
       });
-      results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message, lineNumber: csvLine });
     }
     onProgress?.(i + 1, rows.length, label);
   }
-
   return results;
 }
 
@@ -849,6 +826,7 @@ async function restoreStock(productId: string, attributeId: string | undefined, 
     await setStock(stockId, productId, combId, newQty);
   }
 }
+
 // ==========================================
 // IMAGES ZIP
 // ==========================================

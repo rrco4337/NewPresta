@@ -313,9 +313,9 @@ export async function createPSOrder(params: {
   <id_lang><![CDATA[1]]></id_lang>
   <id_customer><![CDATA[${params.customerId}]]></id_customer>
   <id_carrier><![CDATA[${params.carrierId}]]></id_carrier>
-  <current_state><![CDATA[14]]></current_state>
-  <module><![CDATA[ps_cashondelivery]]></module>
-  <payment><![CDATA[Paiement à la livraison]]></payment>
+  <current_state><![CDATA[1]]></current_state>
+  <module><![CDATA[ps_checkpayment]]></module>
+  <payment><![CDATA[Paiement accepté]]></payment>
   <invoice_number><![CDATA[0]]></invoice_number>
   <invoice_date><![CDATA[0000-00-00 00:00:00]]></invoice_date>
   <delivery_number><![CDATA[0]]></delivery_number>
@@ -366,8 +366,23 @@ export async function createPSOrder(params: {
   
   if (!id) throw new Error('Échec de création de la commande');
 
+  // Force l'état 2 "Paiement accepté" via order_history — PS ignore current_state au POST
+  try {
+    const stateXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order_history>
+    <id_order><![CDATA[${id}]]></id_order>
+    <id_order_state><![CDATA[2]]></id_order_state>
+    <id_employee><![CDATA[0]]></id_employee>
+  </order_history>
+</prestashop>`;
+    await api.post('/order_histories', stateXml);
+  } catch (stateErr: any) {
+    console.warn('[createPSOrder] Impossible de forcer l\'état 2:', stateErr?.response?.data ?? stateErr.message);
+  }
+
   // ✅ FIX : Forcer la date après création car PrestaShop ignore date_add au POST
-   if (params.dateAdd) {
+  if (params.dateAdd) {
     try {
       console.log(`Récupération commande ${id} pour mise à jour date...`);
       

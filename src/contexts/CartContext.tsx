@@ -11,6 +11,8 @@ function roundMoney(value: number): number {
 
 export interface CartItem {
   id: string;
+  attributeId?: string;
+  variantLabel?: string;
   name: string;
   priceHt: number;
   priceTtc: number;
@@ -19,11 +21,15 @@ export interface CartItem {
   imageUrl?: string;
 }
 
+function itemKey(id: string, attributeId?: string): string {
+  return attributeId ? `${id}::${attributeId}` : id;
+}
+
 interface CartContextType {
   items: CartItem[];
   addItem: (item: Omit<CartItem, 'qty'>, qty?: number) => void;
-  removeItem: (id: string) => void;
-  updateQty: (id: string, qty: number) => void;
+  removeItem: (id: string, attributeId?: string) => void;
+  updateQty: (id: string, qty: number, attributeId?: string) => void;
   clear: () => void;
   totalPrice: number;
   totalPriceHt: number;
@@ -63,6 +69,8 @@ function readCartFromSession(): CartItem[] {
         if (!id) return null;
         return {
           id,
+          attributeId: typeof r.attributeId === 'string' ? r.attributeId : undefined,
+          variantLabel: typeof r.variantLabel === 'string' ? r.variantLabel : undefined,
           name: String(r.name ?? ''),
           priceHt,
           priceTtc,
@@ -194,7 +202,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addItem = (item: Omit<CartItem, 'qty'>, qty = 1) => {
     setItems(prev => {
-      const idx = prev.findIndex(i => i.id === item.id);
+      const key = itemKey(item.id, item.attributeId);
+      const idx = prev.findIndex(i => itemKey(i.id, i.attributeId) === key);
       let next: CartItem[];
       if (idx >= 0) {
         next = [...prev];
@@ -207,18 +216,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const removeItem = (id: string) => {
+  const removeItem = (id: string, attributeId?: string) => {
+    const key = itemKey(id, attributeId);
     setItems(prev => {
-      const next = prev.filter(i => i.id !== id);
+      const next = prev.filter(i => itemKey(i.id, i.attributeId) !== key);
       scheduleSyncRef.current?.(next);
       return next;
     });
   };
 
-  const updateQty = (id: string, qty: number) => {
-    if (qty <= 0) { removeItem(id); return; }
+  const updateQty = (id: string, qty: number, attributeId?: string) => {
+    if (qty <= 0) { removeItem(id, attributeId); return; }
+    const key = itemKey(id, attributeId);
     setItems(prev => {
-      const next = prev.map(i => i.id === id ? { ...i, qty } : i);
+      const next = prev.map(i => itemKey(i.id, i.attributeId) === key ? { ...i, qty } : i);
       scheduleSyncRef.current?.(next);
       return next;
     });

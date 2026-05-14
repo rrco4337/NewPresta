@@ -45,7 +45,7 @@ const CartPage: React.FC = () => {
         {/* ── Liste des articles ── */}
         <div className="cart-items">
           {items.map(item => (
-            <div key={item.id} className="cart-item">
+            <div key={`${item.id}::${item.attributeId ?? ''}`} className="cart-item">
               <div className="cart-item-img">
                 {item.imageUrl ? (
                   <img src={item.imageUrl} alt={item.name} onError={e => (e.currentTarget.style.display = 'none')} />
@@ -60,24 +60,29 @@ const CartPage: React.FC = () => {
 
               <div className="cart-item-info">
                 <Link to={`/shop/${item.id}`} className="cart-item-name">{item.name}</Link>
+                {item.variantLabel && (
+                  <span className="cart-item-variant">{item.variantLabel}</span>
+                )}
                 <span className="cart-item-price">{formatPrice(item.priceTtc)}</span>
               </div>
 
               <div className="cart-item-qty">
                 <button
                   className="cart-qty-btn"
-                  onClick={() => item.qty > 1 ? updateQty(item.id, item.qty - 1) : removeItem(item.id)}
+                  onClick={() => item.qty > 1
+                    ? updateQty(item.id, item.qty - 1, item.attributeId)
+                    : removeItem(item.id, item.attributeId)}
                 >−</button>
                 <span className="cart-qty-val">{item.qty}</span>
                 <button
                   className="cart-qty-btn"
-                  onClick={() => updateQty(item.id, item.qty + 1)}
+                  onClick={() => updateQty(item.id, item.qty + 1, item.attributeId)}
                 >+</button>
               </div>
 
               <div className="cart-item-subtotal">{formatPrice(item.priceTtc * item.qty)}</div>
 
-              <button className="cart-item-remove" onClick={() => removeItem(item.id)} title="Retirer">
+              <button className="cart-item-remove" onClick={() => removeItem(item.id, item.attributeId)} title="Retirer">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                 </svg>

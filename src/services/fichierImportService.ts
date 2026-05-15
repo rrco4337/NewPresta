@@ -10,6 +10,15 @@ import {
   type CheckoutItem,
 } from './customerService';
 import { ensureTaxRulesGroupIdByRate, getTaxRateByGroup } from './taxService';
+import {
+  FICHIER1_COLUMN_SPECS,
+  FICHIER2_COLUMN_SPECS,
+  FICHIER3_COLUMN_SPECS,
+  validateHeaders,
+  resolveColumnIndex,
+  validateDateField,
+  validatePositiveAmount,
+} from './importValidationService';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
@@ -939,6 +948,16 @@ async function prevalidateFichier1Internal(
 ): Promise<{ results: FichierImportResult[]; context: PrevalidateContext }> {
   const lines = parseCsvContent(await file.text());
   const header = lines[0] ?? [];
+
+  // Règle 1 : validation des en-têtes
+  const headerErrors = validateHeaders(header, FICHIER1_COLUMN_SPECS);
+  if (headerErrors.length > 0) {
+    return {
+      results: [{ label: 'En-têtes invalides', success: false, error: headerErrors.join(' ; '), lineNumber: 1 }],
+      context: { productRefs: new Set(), taxRateByRef: new Map(), combinationRefs: new Set() },
+    };
+  }
+
   const cols = resolveFichier1Columns(header);
   const rows = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
@@ -959,30 +978,34 @@ async function prevalidateFichier1Internal(
     onProgress?.(i, rows.length, label);
 
     const errors: string[] = [];
-    if (!nom.trim()) errors.push('Nom manquant');
-    if (!reference.trim()) errors.push('Reference manquante');
-    if (dateValue.trim() && !parseDateFlexible(dateValue)) {
-      errors.push('Date invalide');
-    }
 
-    const prixRaw = prix_ttc_str.trim();
-    const prixParsed = prixRaw ? parseNumberStrict(prixRaw) : null;
-    if (!prixRaw) errors.push('Prix TTC manquant');
-    if (prixRaw && prixParsed == null) errors.push('Prix TTC invalide');
+    if (!nom.trim()) errors.push(`Ligne ${csvLine} — "nom" : valeur manquante`);
+    if (!reference.trim()) errors.push(`Ligne ${csvLine} — "reference" : valeur manquante`);
 
-    const prixAchatRaw = prix_achat_str.trim();
-    const prixAchatParsed = prixAchatRaw ? parseNumberStrict(prixAchatRaw) : null;
-    if (prixAchatRaw && prixAchatParsed == null) errors.push('Prix achat invalide');
+    // Règle 2 : date valide
+    const dateErr = validateDateField(dateValue, 'date_availability_produit', csvLine, parseDateFlexible);
+    if (dateErr) errors.push(dateErr);
+
+    // Règle 3 : montants strictement positifs
+    const prixErr = validatePositiveAmount(prix_ttc_str, 'prix_ttc', csvLine);
+    if (prixErr) errors.push(prixErr);
+
+    const prixAchatErr = validatePositiveAmount(prix_achat_str, 'prix_achat', csvLine);
+    if (prixAchatErr) errors.push(prixAchatErr);
 
     const taxeRaw = taxe_str.trim();
     const taxeParsed = taxeRaw ? parseNumberStrict(taxeRaw) : null;
-    if (taxeRaw && taxeParsed == null) errors.push('Taxe invalide');
+    if (taxeRaw && taxeParsed == null) {
+      errors.push(`Ligne ${csvLine} — "taxe" : valeur non numérique "${taxe_str}"`);
+    }
 
-    if (reference && productRefs.has(reference)) errors.push('Reference en double');
+    if (reference && productRefs.has(reference)) {
+      errors.push(`Ligne ${csvLine} — "reference" : la référence "${reference}" est en double dans le fichier`);
+    }
 
     if (errors.length === 0 && reference) {
       const exists = await productExistsByRef(reference, productExistsCache);
-      if (exists) errors.push('Reference deja existante');
+      if (exists) errors.push(`Ligne ${csvLine} — "reference" : "${reference}" existe déjà dans PrestaShop`);
     }
 
     let taxRate = 0;
@@ -1013,60 +1036,85 @@ async function prevalidateFichier2Internal(
   combinationExistsCache: Map<string, boolean>,
 ): Promise<{ results: FichierImportResult[]; combinationRefs: Set<string> }> {
   const lines = parseCsvContent(await file.text());
+  const header = lines[0] ?? [];
+
+  // Règle 1 : validation des en-têtes
+  const headerErrors = validateHeaders(header, FICHIER2_COLUMN_SPECS);
+  if (headerErrors.length > 0) {
+    return {
+      results: [{ label: 'En-têtes invalides', success: false, error: headerErrors.join(' ; '), lineNumber: 1 }],
+      combinationRefs: new Set(),
+    };
+  }
+
+  // Résolution des colonnes par nom
+  const refIdx      = resolveColumnIndex(header, ['reference', 'référence', 'ref']);
+  const specIdx     = resolveColumnIndex(header, ['specificité', 'specificite', 'specifite']);
+  const karaIdx     = resolveColumnIndex(header, ['karazany']);
+  const stockIdx    = resolveColumnIndex(header, ['stock_initial', 'stock', 'quantite', 'qty']);
+  const prixVteIdx  = resolveColumnIndex(header, ['prix_vente_ttc', 'prix_ttc', 'prix vente ttc', 'prix vente']);
+
   const rows = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
-    .filter(({ row }) => row[0]);
+    .filter(({ row }) => (row[refIdx] ?? '').trim() !== '');
   const results: FichierImportResult[] = [];
   const combinationRefs = new Set<string>();
   const seenCombRefs = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
     const { row, csvLine } = rows[i];
-    const [reference, specificite, karazany, stock_str, prix_ttc_str] = row;
+    const reference  = row[refIdx]     ?? '';
+    const specificite = row[specIdx]   ?? '';
+    const karazany   = row[karaIdx]    ?? '';
+    const stock_str  = row[stockIdx]   ?? '';
+    const prix_ttc_str = row[prixVteIdx] ?? '';
     const label = `${reference}${karazany ? ' — ' + karazany : ''}`;
     onProgress?.(i, rows.length, label);
 
     const errors: string[] = [];
-    if (!reference?.trim()) errors.push('Reference manquante');
+    if (!reference.trim()) errors.push(`Ligne ${csvLine} — "reference" : valeur manquante`);
 
-    const stockRaw = (stock_str ?? '').trim();
+    const stockRaw = stock_str.trim();
     if (stockRaw) {
       const stockParsed = parseInt(stockRaw, 10);
-      if (Number.isNaN(stockParsed)) errors.push('Stock invalide');
-      if (!Number.isNaN(stockParsed) && stockParsed < 0) errors.push('Stock negatif');
+      if (Number.isNaN(stockParsed)) {
+        errors.push(`Ligne ${csvLine} — "stock_initial" : valeur non numérique "${stock_str}"`);
+      } else if (stockParsed < 0) {
+        errors.push(`Ligne ${csvLine} — "stock_initial" : stock négatif (valeur reçue : "${stock_str}")`);
+      }
     }
 
-    const priceRaw = (prix_ttc_str ?? '').trim();
-    if (priceRaw) {
-      const priceParsed = parseNumberStrict(priceRaw);
-      if (priceParsed == null) errors.push('Prix TTC invalide');
-    }
+    // Règle 3 : prix_vente_ttc strictement positif si renseigné
+    const prixErr = validatePositiveAmount(prix_ttc_str, 'prix_vente_ttc', csvLine, false);
+    if (prixErr) errors.push(prixErr);
 
-    const hasSpecificite = Boolean(specificite?.trim());
-    const hasKarazany = Boolean(karazany?.trim());
+    const hasSpecificite = Boolean(specificite.trim());
+    const hasKarazany = Boolean(karazany.trim());
     if (hasSpecificite !== hasKarazany) {
-      errors.push('Specificite et karazany doivent etre renseignes ensemble');
+      errors.push(`Ligne ${csvLine} — "specificité" et "karazany" doivent être renseignés ensemble`);
     }
 
     let combRef = '';
-    if (hasSpecificite && hasKarazany && reference?.trim()) {
+    if (hasSpecificite && hasKarazany && reference.trim()) {
       combRef = buildCombinationReference(reference.trim(), karazany.trim());
-      if (seenCombRefs.has(combRef)) errors.push('Declinaison en double');
+      if (seenCombRefs.has(combRef)) {
+        errors.push(`Ligne ${csvLine} — déclinaison "${combRef}" en double dans le fichier`);
+      }
       seenCombRefs.add(combRef);
       combinationRefs.add(combRef);
     }
 
-    if (errors.length === 0 && reference?.trim()) {
+    if (errors.length === 0 && reference.trim()) {
       const ref = reference.trim();
       if (!baseContext.productRefs.has(ref)) {
         const exists = await productExistsByRef(ref, productExistsCache);
-        if (!exists) errors.push(`Produit "${ref}" introuvable`);
+        if (!exists) errors.push(`Ligne ${csvLine} — "reference" : produit "${ref}" introuvable dans PrestaShop`);
       }
     }
 
     if (errors.length === 0 && combRef) {
       const exists = await combinationExistsByRef(combRef, combinationExistsCache);
-      if (exists) errors.push(`Declinaison "${combRef}" deja existante`);
+      if (exists) errors.push(`Ligne ${csvLine} — déclinaison "${combRef}" existe déjà dans PrestaShop`);
     }
 
     if (errors.length === 0) {
@@ -1090,58 +1138,81 @@ async function prevalidateFichier3Internal(
   customerExistsCache: Map<string, boolean>,
 ): Promise<FichierImportResult[]> {
   const lines = parseCsvContent(await file.text());
+  const header = lines[0] ?? [];
+
+  // Règle 1 : validation des en-têtes
+  const headerErrors = validateHeaders(header, FICHIER3_COLUMN_SPECS);
+  if (headerErrors.length > 0) {
+    return [{ label: 'En-têtes invalides', success: false, error: headerErrors.join(' ; '), lineNumber: 1 }];
+  }
+
+  // Résolution des colonnes par nom
+  const dateIdx    = resolveColumnIndex(header, ['date']);
+  const nomIdx     = resolveColumnIndex(header, ['nom', 'name']);
+  const emailIdx   = resolveColumnIndex(header, ['email', 'mail', 'courriel']);
+  const pwdIdx     = resolveColumnIndex(header, ['pwd', 'password', 'mot_de_passe']);
+  const achatIdx   = resolveColumnIndex(header, ['achat', 'commande', 'panier', 'achats']);
+
   const rows = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
-    .filter(({ row }) => row[1]);
+    .filter(({ row }) => (row[nomIdx] ?? '').trim() !== '');
   const results: FichierImportResult[] = [];
 
   for (let i = 0; i < rows.length; i++) {
     const { row, csvLine } = rows[i];
-    const nom = row[1] ?? '';
-    const email = row[2] ?? '';
-    const pwd = row[3] ?? '';
-    const achat = row[5] ?? '';
-    const dateValue = row[0] ?? '';
+    const dateValue = row[dateIdx] ?? '';
+    const nom       = row[nomIdx]  ?? '';
+    const email     = row[emailIdx] ?? '';
+    const pwd       = row[pwdIdx]  ?? '';
+    const achat     = row[achatIdx] ?? '';
     const label = `${nom} (${email})`;
     onProgress?.(i, rows.length, label);
 
     const errors: string[] = [];
-    const emailValue = (email ?? '').trim();
-    if (!nom?.trim()) errors.push('Nom manquant');
-    if (!emailValue) errors.push('Email manquant');
-    if (emailValue && !/^\S+@\S+\.\S+$/.test(emailValue)) errors.push('Email invalide');
-    if (dateValue.trim() && !parseDateFlexible(dateValue)) {
-      errors.push('Date invalide');
+    const emailValue = email.trim();
+
+    if (!nom.trim()) errors.push(`Ligne ${csvLine} — "nom" : valeur manquante`);
+    if (!emailValue)  errors.push(`Ligne ${csvLine} — "email" : valeur manquante`);
+    if (emailValue && !/^\S+@\S+\.\S+$/.test(emailValue)) {
+      errors.push(`Ligne ${csvLine} — "email" : adresse invalide "${email}"`);
     }
 
-    if (emailValue && errors.length === 0) {
+    // Règle 2 : date valide
+    const dateErr = validateDateField(dateValue, 'date', csvLine, parseDateFlexible);
+    if (dateErr) errors.push(dateErr);
+
+    if (emailValue && /^\S+@\S+\.\S+$/.test(emailValue)) {
       const customerExists = await customerExistsByEmail(emailValue, customerExistsCache);
-      if (!customerExists && !(pwd ?? '').trim()) {
-        errors.push('Mot de passe manquant pour nouveau client');
+      if (!customerExists && !pwd.trim()) {
+        errors.push(`Ligne ${csvLine} — "pwd" : mot de passe manquant pour un nouveau client`);
       }
     }
 
-    const items = parseAchat(achat ?? '');
-    if (items.length === 0) errors.push('Aucun achat valide dans la ligne');
+    const items = parseAchat(achat);
+    if (items.length === 0) {
+      errors.push(`Ligne ${csvLine} — "achat" : aucun produit valide trouvé dans la colonne`);
+    }
 
     for (const item of items) {
       if (!item.reference.trim()) {
-        errors.push('Reference produit manquante');
+        errors.push(`Ligne ${csvLine} — "achat" : référence produit manquante`);
         continue;
       }
-      if (item.qty <= 0) errors.push(`Quantite invalide pour ${item.reference}`);
+      if (item.qty <= 0) {
+        errors.push(`Ligne ${csvLine} — "achat" : quantité invalide (${item.qty}) pour "${item.reference}"`);
+      }
 
       const ref = item.reference.trim();
       if (!baseContext.productRefs.has(ref)) {
         const exists = await productExistsByRef(ref, productExistsCache);
-        if (!exists) errors.push(`Produit "${ref}" introuvable`);
+        if (!exists) errors.push(`Ligne ${csvLine} — "achat" : produit "${ref}" introuvable dans PrestaShop`);
       }
 
       if (item.variant?.trim()) {
         const combRef = buildCombinationReference(ref, item.variant.trim());
         if (!baseContext.combinationRefs.has(combRef)) {
           const exists = await combinationExistsByRef(combRef, combinationExistsCache);
-          if (!exists) errors.push(`Declinaison "${combRef}" introuvable`);
+          if (!exists) errors.push(`Ligne ${csvLine} — "achat" : déclinaison "${combRef}" introuvable dans PrestaShop`);
         }
       }
     }

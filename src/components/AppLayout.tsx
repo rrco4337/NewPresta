@@ -123,6 +123,7 @@ const navModules: NavModule[] = [
       { label: 'Import fichiers',   path: '/import/fichiers' },
     ],
   },
+  { label: 'Ajouter stock', path: '/add-stock', icon: <IconBox />, section: 'Catalogue' },
   { label: 'Commandes', path: '/orders', icon: <IconCart />, section: 'Ventes' },
   { label: 'Clients',   path: '/clients', icon: <IconUsers />, disabled: true, section: 'Ventes' },
   { label: 'Audit import', path: '/audit/import', icon: <IconChart />, section: 'Outils' },

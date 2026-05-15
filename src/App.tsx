@@ -23,6 +23,7 @@ import MyOrders from './components/MyOrders';
 import ImportAudit from './components/ImportAudit';
 import DashboardPage from './components/dashboardPage';
 import UserSelectPage from './components/UserSelectPage';
+import AddStock from './components/AddStock';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
@@ -38,6 +39,7 @@ function resolvePageTitle(pathname: string): string {
   if (pathname === '/dashboard') return 'Tableau de bord';
   return '';
 }
+
 
 // Layout wrapper qui lit l'URL pour passer le bon titre
 function LayoutWrapper({ children }: { children: React.ReactNode }) {
@@ -181,6 +183,7 @@ function App() {
               path="/shop/auth"
               element={<CustomerAuthPage />}
             />
+            <Route path="/add-stock" element={<AddStock />} /> 
             <Route
               path="/shop/checkout"
               element={<ShopLayout><CheckoutPage /></ShopLayout>}

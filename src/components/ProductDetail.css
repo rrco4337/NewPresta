@@ -573,8 +573,15 @@
 }
 
 /* ── Badge stock ─────────────────────────────────────────────────────────────── */
+@keyframes stock-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(202, 138, 4, 0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(202, 138, 4, 0); }
+}
+
 .stock-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 12px;
   border-radius: 999px;
   font-size: 12px;
@@ -582,9 +589,55 @@
   align-self: flex-start;
 }
 
+.stock-badge-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
 .stock-badge--ok  { background: #dcfce7; color: #15803d; }
 .stock-badge--low { background: #fef9c3; color: #a16207; }
 .stock-badge--out { background: #fee2e2; color: #dc2626; }
+.stock-badge--pulse { animation: stock-pulse 1.8s ease-in-out infinite; }
+
+/* ── Indicateur stock dans la zone d'achat ───────────────────────────────────── */
+.detail-stock-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid #f1f5f9;
+}
+
+.detail-stock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.5; transform: scale(1.4); }
+}
+
+.detail-stock-dot--pulse {
+  animation: dot-pulse 1.4s ease-in-out infinite;
+}
+
+.detail-stock-text {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.detail-stock-row--ok .detail-stock-dot  { background: #16a34a; }
+.detail-stock-row--low .detail-stock-dot { background: #ca8a04; }
+.detail-stock-row--out .detail-stock-dot { background: #dc2626; }
+
+.detail-stock-row--ok  .detail-stock-text { color: #15803d; }
+.detail-stock-row--low .detail-stock-text { color: #a16207; }
+.detail-stock-row--out .detail-stock-text { color: #dc2626; }
 
 /* ── Description courte ──────────────────────────────────────────────────────── */
 .detail-desc-short {

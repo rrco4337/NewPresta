@@ -213,7 +213,7 @@ export function formatPrice(price: number): string {
 }
 
 export function stockStatus(qty: number): { label: string; level: 'ok' | 'low' | 'out' } {
-  if (qty === 0)   return { label: 'Rupture de stock',        level: 'out' };
-  if (qty <= 5)    return { label: `Plus que ${qty} en stock`, level: 'low' };
-  return               { label: 'En stock',                  level: 'ok' };
+  if (qty === 0) return { label: 'Rupture de stock', level: 'out' };
+  if (qty <= 5)  return { label: `Plus que ${qty} article${qty > 1 ? 's' : ''} disponible${qty > 1 ? 's' : ''}`, level: 'low' };
+  return               { label: `En stock : ${qty}`, level: 'ok' };
 }

@@ -148,20 +148,18 @@ const ProductDetail: React.FC = () => {
   }, [id]);
 
   // 2. Chargement du stock réel (dépend du produit et de la combinaison sélectionnée)
-  useEffect(() => {
-    if (!id) return;
-    setStockLoading(true);
-    setStockError(null);
-    const attributeId = selectedCombo ? String(selectedCombo.id) : '0';
-    stockService.getStockQuantity(id, attributeId)
-      .then(qty => setRealStock(qty))
-      .catch(err => {
-        console.error('Erreur stock:', err);
-        setStockError('Stock indisponible');
-        setRealStock(0);
-      })
-      .finally(() => setStockLoading(false));
-  }, [id, selectedCombo]);
+ useEffect(() => {
+  if (!id) return;
+  setStockLoading(true);
+  const attributeId = selectedCombo ? String(selectedCombo.id) : '0';
+  stockService.getStockQuantity(id, attributeId)
+    .then(qty => setRealStock(qty))
+    .catch(err => {
+      console.error(err);
+      setRealStock(0);
+    })
+    .finally(() => setStockLoading(false));
+}, [id, selectedCombo]);
 
   // Calculs de prix
   const effectivePriceHt = product ? product.priceHt + (selectedCombo?.priceImpact ?? 0) : 0;
@@ -169,8 +167,8 @@ const ProductDetail: React.FC = () => {
   // On utilise le stock réel pour la quantité disponible
   const effectiveQty = realStock;
   const hasCombinations = combinations.length > 0;
-  const canAdd = effectiveQty > 0 && (!hasCombinations || selectedCombo !== null);
-  const maxQty = Math.max(1, Math.min(effectiveQty, 99));
+const canAdd = !stockLoading && effectiveQty > 0 && (!hasCombinations || selectedCombo !== null);
+const maxQty = Math.max(1, Math.min(effectiveQty, 99));
 
   const handleAddToCart = () => {
     if (!product || !canAdd) return;

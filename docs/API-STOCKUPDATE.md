@@ -58,7 +58,7 @@ React reçoit la réponse XML et met à jour l'état local
 
 ## 2. Création du module PrestaShop
 
-Créez cette arborescence **dans le dossier `modules/` de PrestaShop** :
+Créez cette arborescence **dans le dossier `modules/` de PrestaShop** : *deja dans ce projet , juste a copier
 
 ```
 modules/

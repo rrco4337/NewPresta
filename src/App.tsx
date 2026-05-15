@@ -23,6 +23,7 @@ import MyOrders from './components/MyOrders';
 import ImportAudit from './components/ImportAudit';
 import DashboardPage from './components/dashboardPage';
 import UserSelectPage from './components/UserSelectPage';
+import StockUpdate from './components/StockUpdate';
 
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
@@ -147,6 +148,16 @@ function App() {
                 <ProtectedRoute>
                   <LayoutWrapper>
                     <OrderList />
+                  </LayoutWrapper>
+                </ProtectedRoute>
+              }
+            />
+             <Route
+              path="/stock"
+              element={
+                <ProtectedRoute>
+                  <LayoutWrapper>
+                    <StockUpdate />
                   </LayoutWrapper>
                 </ProtectedRoute>
               }

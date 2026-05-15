@@ -191,6 +191,60 @@ export const productService = {
     }
   },
 
+  getAllProductsWithDeclinaison: async (filters: ProductFilters = {}): Promise<Product[]> => {
+  try {
+    const params = new URLSearchParams();
+    params.set('display', 'full');
+    
+    // Ne PAS filtrer par type "simple" - on veut tous les produits
+    // Supprime ou commente tout filtre qui exclurait les déclinaisons
+    
+    const nameFilter = normalizeText(filters.name);
+    if (nameFilter) params.set('filter[name]', `%[${nameFilter}]%`);
+
+    const referenceFilter = normalizeText(filters.reference);
+    if (referenceFilter) params.set('filter[reference]', `%[${referenceFilter}]%`);
+
+    if (typeof filters.categoryId === 'number') {
+      params.set('filter[id_category_default]', String(filters.categoryId));
+    }
+
+    if (typeof filters.active === 'boolean') {
+      params.set('filter[active]', filters.active ? '1' : '0');
+    }
+
+    const priceRange = buildRange(filters.priceMin, filters.priceMax);
+    if (priceRange) params.set('filter[price]', priceRange);
+
+    const quantityIds = await getProductIdsByStockRange(filters.quantityMin, filters.quantityMax);
+    const idRange = buildRange(filters.idMin, filters.idMax);
+
+    if (quantityIds) {
+      const narrowedIds = applyIdRange(quantityIds, filters.idMin, filters.idMax);
+      if (narrowedIds.length === 0) return [];
+      params.set('filter[id]', `[${narrowedIds.join('|')}]`);
+    } else if (idRange) {
+      params.set('filter[id]', idRange);
+    }
+
+    const response = await api.get(`/products?${params.toString()}`);
+    const xmlData = parseXMLToJSON(response.data);
+    const root = getPrestashopRoot(xmlData);
+    const productsContainer = root && isRecord(root.products) ? root.products : null;
+    const rawProducts = productsContainer?.product;
+
+    if (!rawProducts) return [];
+    const productsArray = Array.isArray(rawProducts) ? rawProducts : [rawProducts];
+    
+    return productsArray
+      .filter(isRecord)
+      .map(PrestashopMapper.mapToFrontend);
+  } catch (error) {
+    console.error("Erreur getAll:", error);
+    return [];
+  }
+},
+
  create: async (data: Partial<Product>): Promise<Product | null> => {
     try {
       const xml = PrestashopMapper.buildXml(data);

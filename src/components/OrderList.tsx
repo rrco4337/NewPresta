@@ -6,6 +6,7 @@ import {
   PS_STATE_LABELS,
   type PSOrder,
   transformCartToOrder,
+  deleteZombieCarts,
 } from '../services/orderService';
 import './OrderList.css';
 
@@ -49,6 +50,7 @@ const OrderList: React.FC = () => {
     oldValue: number;
   } | null>(null);
   const [applying, setApplying] = useState(false);
+  const [deletingZombies, setDeletingZombies] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,6 +143,20 @@ const handleConfirmChange = async () => {
 
   const handleCancelChange = () => setPendingChange(null);
 
+  const zombieCount = orders.filter(o => o.currentState === 1 && o.totalPaid === 0).length;
+
+  const handleDeleteZombies = async () => {
+    if (zombieCount === 0) return;
+    if (!window.confirm(`Supprimer ${zombieCount} panier(s) vide(s) (0,00 €) ? Cette action est irréversible.`)) return;
+    setDeletingZombies(true);
+    const { deleted, failed } = await deleteZombieCarts(orders);
+    setDeletingZombies(false);
+    if (failed > 0) {
+      alert(`${deleted} panier(s) supprimé(s), ${failed} échec(s).`);
+    }
+    await load();
+  };
+
   // Déterminer les options disponibles selon l'état actuel
   const getAvailableOptions = (currentState: number): { value: number; label: string }[] => {
     const allOptions = ALLOWED_PS_STATES;
@@ -187,6 +203,16 @@ const handleConfirmChange = async () => {
         <button className="btn btn-secondary" onClick={load} disabled={loading}>
           {loading ? 'Chargement…' : 'Actualiser'}
         </button>
+        {zombieCount > 0 && (
+          <button
+            className="btn btn-danger"
+            onClick={handleDeleteZombies}
+            disabled={deletingZombies || loading}
+            title="Supprimer tous les paniers sans produit (0,00 €)"
+          >
+            {deletingZombies ? 'Suppression…' : `Supprimer ${zombieCount} panier(s) vide(s)`}
+          </button>
+        )}
         <span className="orders-count">
           {orders.length} élément(s) ({orders.filter(o => o.currentState === 1).length} panier(s), {orders.filter(o => o.currentState === 2).length} payée(s), {orders.filter(o => o.currentState === 6).length} annulée(s))
         </span>

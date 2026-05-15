@@ -11,7 +11,7 @@ const api = axios.create({
 
 export interface RemoteCartResult {
   cartId: string;
-  items: { productId: string; quantity: number }[];
+  items: { productId: string; quantity: number; attributeId?: string }[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,10 +59,15 @@ export async function fetchCustomerCart(customerId: string): Promise<RemoteCartR
 
     const items: RemoteCartResult['items'] = [];
     cartEl.querySelectorAll('cart_row').forEach(row => {
-      const productId = row.querySelector('id_product')?.textContent?.trim();
-      const quantity = parseInt(row.querySelector('quantity')?.textContent ?? '0', 10);
+      const productId  = row.querySelector('id_product')?.textContent?.trim();
+      const quantity   = parseInt(row.querySelector('quantity')?.textContent ?? '0', 10);
+      const attrId     = row.querySelector('id_product_attribute')?.textContent?.trim();
       if (productId && quantity > 0) {
-        items.push({ productId, quantity });
+        items.push({
+          productId,
+          quantity,
+          attributeId: attrId && attrId !== '0' ? attrId : undefined,
+        });
       }
     });
 

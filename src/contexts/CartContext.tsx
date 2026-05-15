@@ -139,11 +139,26 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const detail = await fetchShopProductDetail(row.productId);
               if (cancelled) return;
               if (detail) {
+                let priceHt = detail.product.priceHt;
+                let priceTtc = detail.product.priceTtc;
+                let variantLabel: string | undefined;
+
+                if (row.attributeId) {
+                  const combo = detail.combinations.find(c => c.id === row.attributeId);
+                  if (combo) {
+                    priceHt = detail.product.priceHt + combo.priceImpact;
+                    priceTtc = priceHt * (1 + detail.product.taxRate);
+                    variantLabel = combo.label;
+                  }
+                }
+
                 loadedItems.push({
                   id: detail.product.id,
+                  attributeId: row.attributeId,
+                  variantLabel,
                   name: detail.product.name,
-                  priceHt: detail.product.priceHt,
-                  priceTtc: detail.product.priceTtc,
+                  priceHt,
+                  priceTtc,
                   taxRate: detail.product.taxRate,
                   qty: row.quantity,
                   imageUrl: detail.images[0],

@@ -157,6 +157,7 @@ export async function fetchPSOrders(): Promise<PSOrder[]> {
 
 // Cache pour éviter de re-fetcher le même produit plusieurs fois
 const productPriceCache = new Map<string, number>();
+const combinationPriceCache = new Map<string, number>();
 
 async function fetchProductPrice(productId: string): Promise<number> {
   if (productPriceCache.has(productId)) {
@@ -177,6 +178,21 @@ async function fetchProductPrice(productId: string): Promise<number> {
     return price;
   } catch {
     console.warn(`Impossible de récupérer le prix du produit ${productId}`);
+    return 0;
+  }
+}
+
+async function fetchCombinationPriceImpact(comboId: string): Promise<number> {
+  if (combinationPriceCache.has(comboId)) {
+    return combinationPriceCache.get(comboId)!;
+  }
+  try {
+    const res = await api.get(`/combinations/${comboId}?display=[price]`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const impact = parseFloat(doc.querySelector('price')?.textContent ?? '0') || 0;
+    combinationPriceCache.set(comboId, impact);
+    return impact;
+  } catch {
     return 0;
   }
 }
@@ -208,10 +224,12 @@ async function parseCartsXml(
       const rowTotals = await Promise.all(
         rows.map(async (row) => {
           const productId = row.querySelector('id_product')?.textContent?.trim() ?? '';
+          const attrId   = row.querySelector('id_product_attribute')?.textContent?.trim() ?? '0';
           const qty = parseInt(row.querySelector('quantity')?.textContent?.trim() ?? '0', 10);
           if (!productId || isNaN(qty) || qty === 0) return 0;
-          const unitPrice = await fetchProductPrice(productId);
-          return unitPrice * qty;
+          const basePrice   = await fetchProductPrice(productId);
+          const priceImpact = attrId !== '0' ? await fetchCombinationPriceImpact(attrId) : 0;
+          return (basePrice + priceImpact) * qty;
         })
       );
 
@@ -309,6 +327,31 @@ export async function updatePSOrderStatus(orderId: string, stateId: number): Pro
     console.error(`Erreur updatePSOrderStatus pour ${orderId} -> ${stateId}:`, error);
     return false;
   }
+}
+
+// ==========================================
+// SUPPRESSION DES PANIERS
+// ==========================================
+
+export async function deletePSCart(cartId: string): Promise<boolean> {
+  try {
+    await api.delete(`/carts/${cartId}`);
+    return true;
+  } catch (error) {
+    console.error(`Erreur suppression panier ${cartId}:`, error);
+    return false;
+  }
+}
+
+export async function deleteZombieCarts(orders: PSOrder[]): Promise<{ deleted: number; failed: number }> {
+  const zombies = orders.filter(o => o.currentState === 1 && o.totalPaid === 0);
+  let deleted = 0;
+  let failed = 0;
+  for (const cart of zombies) {
+    const ok = await deletePSCart(cart.id);
+    if (ok) deleted++; else failed++;
+  }
+  return { deleted, failed };
 }
 
 // ==========================================

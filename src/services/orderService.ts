@@ -312,6 +312,31 @@ export async function updatePSOrderStatus(orderId: string, stateId: number): Pro
 }
 
 // ==========================================
+// SUPPRESSION DES PANIERS
+// ==========================================
+
+export async function deletePSCart(cartId: string): Promise<boolean> {
+  try {
+    await api.delete(`/carts/${cartId}`);
+    return true;
+  } catch (error) {
+    console.error(`Erreur suppression panier ${cartId}:`, error);
+    return false;
+  }
+}
+
+export async function deleteZombieCarts(orders: PSOrder[]): Promise<{ deleted: number; failed: number }> {
+  const zombies = orders.filter(o => o.currentState === 1 && o.totalPaid === 0);
+  let deleted = 0;
+  let failed = 0;
+  for (const cart of zombies) {
+    const ok = await deletePSCart(cart.id);
+    if (ok) deleted++; else failed++;
+  }
+  return { deleted, failed };
+}
+
+// ==========================================
 // FONCTIONS UTILITAIRES POUR LE STATISTIQUES
 // ==========================================
 

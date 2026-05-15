@@ -8,23 +8,22 @@ import {
   type ShopProduct,
   type ShopCombination,
 } from '../services/shopService';
+import { stockService } from '../services/stockApi';
 import ProductBadge from './ProductBadge';
 import './ProductDetail.css';
 
 // ── Image placeholder ─────────────────────────────────────────────────────────
-
 const ImgPlaceholder = () => (
   <div className="detail-img-placeholder">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2">
-      <rect x="3" y="3" width="18" height="18" rx="2"/>
-      <circle cx="8.5" cy="8.5" r="1.5"/>
-      <polyline points="21 15 16 10 5 21"/>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
     </svg>
   </div>
 );
 
 // ── Galerie ───────────────────────────────────────────────────────────────────
-
 const Gallery: React.FC<{ images: string[] }> = ({ images }) => {
   const [active, setActive] = useState(0);
   const [imgError, setImgError] = useState<Record<number, boolean>>({});
@@ -47,7 +46,7 @@ const Gallery: React.FC<{ images: string[] }> = ({ images }) => {
             src={images[active]}
             alt="Produit"
             className="detail-main-img"
-            onError={() => setImgError(p => ({ ...p, [active]: true }))}
+            onError={() => setImgError((p) => ({ ...p, [active]: true }))}
           />
         )}
       </div>
@@ -66,7 +65,7 @@ const Gallery: React.FC<{ images: string[] }> = ({ images }) => {
                 <img
                   src={url}
                   alt={`Vue ${i + 1}`}
-                  onError={() => setImgError(p => ({ ...p, [i]: true }))}
+                  onError={() => setImgError((p) => ({ ...p, [i]: true }))}
                 />
               )}
             </button>
@@ -78,7 +77,6 @@ const Gallery: React.FC<{ images: string[] }> = ({ images }) => {
 };
 
 // ── Sélecteur de quantité ─────────────────────────────────────────────────────
-
 interface QtyProps {
   value: number;
   max: number;
@@ -91,14 +89,16 @@ const QtySelector: React.FC<QtyProps> = ({ value, max, onChange }) => (
       className="qty-btn"
       onClick={() => onChange(Math.max(1, value - 1))}
       disabled={value <= 1}
-    >−</button>
+    >
+      −
+    </button>
     <input
       type="number"
       className="qty-input"
       value={value}
       min={1}
       max={max}
-      onChange={e => {
+      onChange={(e) => {
         const n = parseInt(e.target.value, 10);
         if (!isNaN(n)) onChange(Math.min(max, Math.max(1, n)));
       }}
@@ -107,33 +107,43 @@ const QtySelector: React.FC<QtyProps> = ({ value, max, onChange }) => (
       className="qty-btn"
       onClick={() => onChange(Math.min(max, value + 1))}
       disabled={value >= max}
-    >+</button>
+    >
+      +
+    </button>
   </div>
 );
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-
 const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addItem } = useCart();
 
-  const [product, setProduct]           = useState<ShopProduct | null>(null);
-  const [images, setImages]             = useState<string[]>([]);
+  const [product, setProduct] = useState<ShopProduct | null>(null);
+  const [images, setImages] = useState<string[]>([]);
   const [combinations, setCombinations] = useState<ShopCombination[]>([]);
   const [selectedCombo, setSelectedCombo] = useState<ShopCombination | null>(null);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState<string | null>(null);
-  const [qty, setQty]                   = useState(1);
-  const [added, setAdded]               = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [qty, setQty] = useState(1);
+  const [added, setAdded] = useState(false);
 
+  // États pour le stock réel
+  const [realStock, setRealStock] = useState(0);
+  const [stockLoading, setStockLoading] = useState(true);
+  const [stockError, setStockError] = useState<string | null>(null);
+
+  // 1. Chargement des infos produit
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
     fetchShopProductDetail(id)
-      .then(data => {
-        if (!data) { setError('Produit introuvable.'); return; }
+      .then((data) => {
+        if (!data) {
+          setError('Produit introuvable.');
+          return;
+        }
         setProduct(data.product);
         setImages(data.images);
         setCombinations(data.combinations);
@@ -144,34 +154,56 @@ const ProductDetail: React.FC = () => {
       .finally(() => setLoading(false));
   }, [id]);
 
-  const effectivePriceHt  = product
-    ? product.priceHt + (selectedCombo?.priceImpact ?? 0)
-    : 0;
-  const effectivePriceTtc = product
-    ? effectivePriceHt * (1 + product.taxRate)
-    : 0;
-  const effectiveQty = selectedCombo ? selectedCombo.quantity : (product?.quantity ?? 0);
+  // 2. Chargement du stock réel (dépend du produit et de la combinaison sélectionnée)
+  useEffect(() => {
+    if (!id) return;
+    setStockLoading(true);
+    setStockError(null);
+    const attributeId = selectedCombo ? String(selectedCombo.id) : '0';
+    stockService
+      .getStockQuantity(id, attributeId)
+      .then((qty) => setRealStock(qty))
+      .catch((err) => {
+        console.error(err);
+        setStockError("Stock temporairement indisponible");
+        setRealStock(0);
+      })
+      .finally(() => setStockLoading(false));
+  }, [id, selectedCombo]);
+
+  // Calculs de prix
+  const effectivePriceHt = product ? product.priceHt + (selectedCombo?.priceImpact ?? 0) : 0;
+  const effectivePriceTtc = product ? effectivePriceHt * (1 + product.taxRate) : 0;
+  const effectiveQty = realStock;
   const hasCombinations = combinations.length > 0;
-  const canAdd = effectiveQty > 0 && (!hasCombinations || selectedCombo !== null);
+
+  // Condition pour ajouter au panier
+  const canAdd =
+    !stockLoading &&
+    effectiveQty > 0 &&
+    (!hasCombinations || selectedCombo !== null);
+  const maxQty = Math.max(1, Math.min(effectiveQty, 99));
 
   const handleAddToCart = () => {
     if (!product || !canAdd) return;
-    addItem({
-      id: product.id,
-      attributeId: selectedCombo?.id,
-      variantLabel: selectedCombo?.label,
-      name: product.name,
-      priceHt: effectivePriceHt,
-      priceTtc: effectivePriceTtc,
-      taxRate: product.taxRate,
-      imageUrl: images[0],
-    }, qty);
+    addItem(
+      {
+        id: product.id,
+        attributeId: selectedCombo?.id,
+        variantLabel: selectedCombo?.label,
+        name: product.name,
+        priceHt: effectivePriceHt,
+        priceTtc: effectivePriceTtc,
+        taxRate: product.taxRate,
+        imageUrl: images[0],
+      },
+      qty,
+    );
     setAdded(true);
     setTimeout(() => setAdded(false), 2000);
   };
 
-  // ── États ─────────────────────────────────────────────────────────────────────
-
+  // Affichage du squelette de chargement
   if (loading) {
     return (
       <div className="detail-page">
@@ -203,8 +235,21 @@ const ProductDetail: React.FC = () => {
   }
 
   const { label: stockLabel, level: stockLevel } = stockStatus(effectiveQty);
-  const maxQty = Math.max(1, Math.min(effectiveQty, 99));
   const taxPct = Math.round(product.taxRate * 10000) / 100;
+
+  // Message d'information stock selon contexte
+  let stockMessage = '';
+  if (hasCombinations && !selectedCombo) {
+    stockMessage = 'Choisissez une déclinaison';
+  } else if (stockLoading) {
+    stockMessage = 'Vérification du stock...';
+  } else if (stockError) {
+    stockMessage = '⚠️ Stock indisponible';
+  } else if (effectiveQty === 0) {
+    stockMessage = 'Rupture de stock';
+  } else {
+    stockMessage = stockLabel;
+  }
 
   return (
     <div className="detail-page">
@@ -216,16 +261,12 @@ const ProductDetail: React.FC = () => {
       </nav>
 
       <div className="detail-layout">
-        {/* ── Galerie ── */}
         <Gallery images={images} />
 
-        {/* ── Infos produit ── */}
         <div className="detail-info">
           <div className="detail-info-top">
             <h1 className="detail-name">{product.name}</h1>
-            {product.reference && (
-              <p className="detail-ref">Réf : {product.reference}</p>
-            )}
+            {product.reference && <p className="detail-ref">Réf : {product.reference}</p>}
             <ProductBadge
               dateAvailability={product.date_availability_produit}
               className="availability-badge--inline"
@@ -233,57 +274,62 @@ const ProductDetail: React.FC = () => {
           </div>
 
           <div className="detail-price">{formatPrice(effectivePriceTtc)}</div>
-
           <div className="detail-tax">TVA: {taxPct}%</div>
 
-          <div className={`stock-badge stock-badge--${stockLevel}${stockLevel === 'low' ? ' stock-badge--pulse' : ''}`}>
-            {stockLevel === 'ok' && (
-              <svg className="stock-badge-icon" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M16.704 5.296a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-3-3a1 1 0 111.414-1.414L9 11.586l6.296-6.29a1 1 0 011.414 0z" clipRule="evenodd"/>
-              </svg>
-            )}
-            {stockLevel === 'low' && (
-              <svg className="stock-badge-icon" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-5a1 1 0 00-1 1v2a1 1 0 002 0V9a1 1 0 00-1-1z" clipRule="evenodd"/>
-              </svg>
-            )}
-            {stockLevel === 'out' && (
-              <svg className="stock-badge-icon" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd"/>
-              </svg>
-            )}
-            {stockLabel}
-          </div>
+          {/* Indicateur de stock (avec gestion des déclinaisons) */}
+          {hasCombinations && !selectedCombo ? (
+            <div className="stock-badge stock-badge--info">🔘 {stockMessage}</div>
+          ) : stockLoading ? (
+            <div className="stock-badge stock-badge--loading">{stockMessage}</div>
+          ) : stockError ? (
+            <div className="stock-badge stock-badge--error">{stockMessage}</div>
+          ) : (
+            <>
+              <div className={`stock-badge stock-badge--${stockLevel}`}>{stockMessage}</div>
+              {effectiveQty > 0 && !hasCombinations && (
+                <div className="detail-stock-count">Stock: {effectiveQty} disponible(s)</div>
+              )}
+              {effectiveQty > 0 && hasCombinations && selectedCombo && (
+                <div className="detail-stock-count">Stock: {effectiveQty} disponible(s)</div>
+              )}
+            </>
+          )}
 
+          {/* Sélecteur de déclinaisons */}
           {hasCombinations && (
             <div className="detail-combinations">
               <p className="detail-combo-label">Déclinaison</p>
               <div className="detail-combo-options">
-                {combinations.map(combo => (
-                  <button
-                    key={combo.id}
-                    type="button"
-                    disabled={combo.quantity === 0}
-                    className={[
-                      'detail-combo-btn',
-                      selectedCombo?.id === combo.id ? 'detail-combo-btn--selected' : '',
-                      combo.quantity === 0 ? 'detail-combo-btn--out' : '',
-                    ].join(' ').trim()}
-                    onClick={() => setSelectedCombo(combo)}
-                  >
-                    {combo.label}
-                    {combo.priceImpact > 0 && (
-                      <span className="detail-combo-delta">
-                        {` +${formatPrice(combo.priceImpact * (1 + product.taxRate))}`}
-                      </span>
-                    )}
-                    {combo.priceImpact < 0 && (
-                      <span className="detail-combo-delta detail-combo-delta--neg">
-                        {` ${formatPrice(combo.priceImpact * (1 + product.taxRate))}`}
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {combinations.map((combo) => {
+                  // Note: `combo.quantity` vient du service shop (valeur indicative)
+                  const isOut = combo.quantity === 0;
+                  return (
+                    <button
+                      key={combo.id}
+                      type="button"
+                      className={[
+                        'detail-combo-btn',
+                        selectedCombo?.id === combo.id ? 'detail-combo-btn--selected' : '',
+                        isOut ? 'detail-combo-btn--out' : '',
+                      ]
+                        .join(' ')
+                        .trim()}
+                      onClick={() => setSelectedCombo(combo)}
+                    >
+                      {combo.label}
+                      {combo.priceImpact > 0 && (
+                        <span className="detail-combo-delta">
+                          {` +${formatPrice(combo.priceImpact * (1 + product.taxRate))}`}
+                        </span>
+                      )}
+                      {combo.priceImpact < 0 && (
+                        <span className="detail-combo-delta detail-combo-delta--neg">
+                          {` ${formatPrice(combo.priceImpact * (1 + product.taxRate))}`}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
               {!selectedCombo && (
                 <p className="detail-combo-hint">Veuillez sélectionner une déclinaison.</p>
@@ -291,6 +337,7 @@ const ProductDetail: React.FC = () => {
             </div>
           )}
 
+          {/* Description courte */}
           {product.description_short && (
             <div
               className="detail-desc-short"
@@ -298,9 +345,9 @@ const ProductDetail: React.FC = () => {
             />
           )}
 
-          {/* ── Quantité + bouton ── */}
+          {/* Zone d'achat */}
           <div className="detail-purchase">
-            {canAdd && (
+            {canAdd && !stockLoading && !stockError && (
               <div className="detail-qty-row">
                 <label className="detail-qty-label">Quantité</label>
                 <QtySelector value={qty} max={maxQty} onChange={setQty} />
@@ -308,32 +355,44 @@ const ProductDetail: React.FC = () => {
             )}
 
             <div className={`detail-stock-row detail-stock-row--${stockLevel}`}>
-              <span className={`detail-stock-dot${stockLevel === 'low' ? ' detail-stock-dot--pulse' : ''}`} />
+              <span
+                className={`detail-stock-dot${stockLevel === 'low' ? ' detail-stock-dot--pulse' : ''}`}
+              />
               <span className="detail-stock-text">
                 {effectiveQty === 0
-                  ? 'Ce produit n\'est plus disponible actuellement'
+                  ? "Ce produit n'est plus disponible actuellement"
                   : hasCombinations && !selectedCombo
                     ? 'Sélectionnez une déclinaison pour voir la disponibilité'
-                    : stockLabel}
+                    : stockMessage}
               </span>
             </div>
 
             <button
               className={`btn-add-cart${added ? ' btn-add-cart--added' : ''}`}
-              disabled={!canAdd}
+              disabled={!canAdd || stockLoading}
               onClick={handleAddToCart}
             >
               {added ? (
                 '✓ Ajouté au panier !'
+              ) : stockLoading ? (
+                'Vérification...'
               ) : effectiveQty === 0 ? (
                 'Rupture de stock'
               ) : hasCombinations && !selectedCombo ? (
                 'Choisissez une déclinaison'
               ) : (
                 <>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
-                    <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6"/>
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <circle cx="9" cy="21" r="1" />
+                    <circle cx="20" cy="21" r="1" />
+                    <path d="M1 1h4l2.68 13.39a2 2 0 002 1.61h9.72a2 2 0 002-1.61L23 6H6" />
                   </svg>
                   Ajouter au panier
                 </>
@@ -341,7 +400,7 @@ const ProductDetail: React.FC = () => {
             </button>
           </div>
 
-          {/* ── Description complète ── */}
+          {/* Description longue */}
           {product.description && (
             <div className="detail-desc">
               <h3 className="detail-desc-title">Description</h3>

@@ -38,19 +38,35 @@ function calcTtc(priceHt: number, taxRate: number): number {
 
 function parseStockXml(xml: string): Map<string, number> {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
-  const map = new Map<string, number>();
+  // baseMap: stock from id_product_attribute=0 records (simple products or stale cache)
+  // comboMap: sum of stocks from combination records (id_product_attribute != 0)
+  const baseMap = new Map<string, number>();
+  const comboMap = new Map<string, number>();
+
   doc.querySelectorAll('stock_available').forEach(el => {
-    const pid = el.querySelector('id_product')?.textContent?.trim();
-    const qty = parseInt(el.querySelector('quantity')?.textContent ?? '0', 10);
-    if (pid) map.set(pid, qty);
+    const pid  = el.querySelector('id_product')?.textContent?.trim();
+    const attr = el.querySelector('id_product_attribute')?.textContent?.trim() ?? '0';
+    const qty  = parseInt(el.querySelector('quantity')?.textContent ?? '0', 10);
+    if (!pid) return;
+    if (attr === '0') {
+      baseMap.set(pid, qty);
+    } else {
+      comboMap.set(pid, (comboMap.get(pid) ?? 0) + qty);
+    }
   });
-  return map;
+
+  // For combination products use the sum of combination stocks (source of truth).
+  // For simple products (no combination records) use the base stock.
+  const result = new Map<string, number>();
+  comboMap.forEach((qty, pid) => result.set(pid, qty));
+  baseMap.forEach((qty, pid) => { if (!comboMap.has(pid)) result.set(pid, qty); });
+  return result;
 }
 
 export async function fetchStockMap(): Promise<Map<string, number>> {
   try {
     const res = await api.get(
-      '/stock_availables?display=[id_product,quantity]&filter[id_product_attribute]=[0]'
+      '/stock_availables?display=[id_product,id_product_attribute,quantity]'
     );
     return parseStockXml(res.data);
   } catch { return new Map(); }
@@ -85,7 +101,7 @@ export async function fetchShopCategories(): Promise<ShopCategory[]> {
         c.querySelector('name')?.textContent?.trim() ?? '';
       if (id > 2 && name) cats.push({ id, name });
     });
-    return cats.sort((a, b) => a.name.localeCompare('fr'));
+    return cats.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   } catch { return []; }
 }
 

@@ -169,15 +169,29 @@ class StockapiUpdateModuleFrontController extends ModuleFrontController
             $this->xmlError(400, 'delta must be != 0');
         }
 
-        // ── Mise à jour du stock (méthode PS native) ──────────────────
-        // delta positif  = entrée de stock
-        // delta négatif  = sortie de stock
-        StockAvailable::updateQuantity($idProduct, $idProductAttribute, $delta);
+        // ── Mise à jour du stock ──────────────────────────────────────
+        // ⚠️  NE PAS utiliser StockAvailable::updateQuantity() ici.
+        //     Sur PS 8, cette méthode tente un INSERT quand elle ne trouve
+        //     pas d'entrée pour id_shop=0/id_shop_group=0 — ce qui provoque
+        //     un SQLSTATE 23000 (Duplicate entry) et un 500 pour tous les
+        //     produits à déclinaisons. Symptôme : fonctionne sur produit simple,
+        //     plante sur combinaisons.
+        //
+        //     Solution : UPDATE SQL direct, atomique, pas de race condition.
+        $db     = Db::getInstance();
+        $prefix = _DB_PREFIX_;
 
-        // Lecture de la nouvelle quantité après mise à jour
-        $newQty = (int) StockAvailable::getQuantityAvailableByProduct(
-            $idProduct,
-            $idProductAttribute
+        $db->execute(
+            "UPDATE `{$prefix}stock_available`" .
+            " SET `quantity` = `quantity` + " . (int)$delta .
+            " WHERE `id_product` = " . (int)$idProduct .
+            " AND `id_product_attribute` = " . (int)$idProductAttribute
+        );
+
+        $newQty = (int)$db->getValue(
+            "SELECT `quantity` FROM `{$prefix}stock_available`" .
+            " WHERE `id_product` = " . (int)$idProduct .
+            " AND `id_product_attribute` = " . (int)$idProductAttribute
         );
 
         // ── Réponse XML ───────────────────────────────────────────────
@@ -221,30 +235,53 @@ class StockapiUpdateModuleFrontController extends ModuleFrontController
 
 ## 5. Installation du module
 
+### Option A — Via la console PS (recommandé en Docker)
+
+```bash
+docker exec prestashop_app php bin/console prestashop:module install stockapi
+```
+
+### Option B — Via le Back-Office
+
 1. Déposez le dossier `stockapi/` dans `modules/` de votre PS
 2. Allez dans **Back-Office → Modules → Gestionnaire de modules**
 3. Recherchez **Stock API** et cliquez **Installer**
 
 L'URL de l'endpoint devient alors :
 ```
-https://votre-boutique.com/module/stockapi/update
+http://localhost:8080/module/stockapi/update
 ```
+
+> **Important après installation :** la clé générée automatiquement par `install()` ne correspond pas à celle du `.env`. Synchronisez-la immédiatement (voir §6).
 
 ---
 
-## 6. Récupérer la clé secrète
+## 6. Synchroniser la clé secrète avec le `.env`
 
-**Option A — via le Back-Office PS :**  
-Paramètres avancés → Paramètres → cherchez `STOCKAPI_SECRET_KEY`
+Après installation, PS génère une clé aléatoire. Il faut la remplacer par celle du `.env` (`VITE_STOCKAPI_KEY`) pour que React puisse s'authentifier.
 
-**Option B — via SQL (phpMyAdmin ou CLI) :**
-```sql
-SELECT value
-FROM ps_configuration
-WHERE name = 'STOCKAPI_SECRET_KEY';
+**Via PHP CLI (Docker) :**
+
+```bash
+docker exec prestashop_app php -r "
+define('_PS_ROOT_DIR_', '/var/www/html');
+require_once '/var/www/html/config/config.inc.php';
+Configuration::updateValue('STOCKAPI_SECRET_KEY', 'VOTRE_CLE_DU_ENV');
+echo Configuration::get('STOCKAPI_SECRET_KEY') . PHP_EOL;
+"
 ```
 
-Copiez cette valeur, vous en aurez besoin à l'étape suivante.
+**Vérifier la clé actuelle :**
+
+```bash
+docker exec prestashop_app php -r "
+define('_PS_ROOT_DIR_', '/var/www/html');
+require_once '/var/www/html/config/config.inc.php';
+echo Configuration::get('STOCKAPI_SECRET_KEY') . PHP_EOL;
+"
+```
+
+> La valeur dans PS doit être identique à `VITE_STOCKAPI_KEY` dans `.env`.
 
 ---
 

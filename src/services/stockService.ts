@@ -54,7 +54,38 @@ const moduleApi: AxiosInstance = axios.create({
   },
 });
 
+async function sendMovementToAPI(movement: {
+  id: string;
+  key: string;
+  id_product: number;
+  product_name: string;
+  combination_label: string;
+  id_stock_available: number;
+  quantity_before: number;
+  quantity_added: number;
+  quantity_after: number;
+  note: string;
+  date?: string;
+}): Promise<void> {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <movement>
+    <id><![CDATA[${movement.id}]]></id>
+    <key><![CDATA[${movement.key}]]></key>
+    <id_product><![CDATA[${movement.id_product}]]></id_product>
+    <product_name><![CDATA[${movement.product_name}]]></product_name>
+    <combination_label><![CDATA[${movement.combination_label}]]></combination_label>
+    <id_stock_available><![CDATA[${movement.id_stock_available}]]></id_stock_available>
+    <quantity_before><![CDATA[${movement.quantity_before}]]></quantity_before>
+    <quantity_added><![CDATA[${movement.quantity_added}]]></quantity_added>
+    <quantity_after><![CDATA[${movement.quantity_after}]]></quantity_after>
+    <date><![CDATA[${movement.date || new Date().toISOString()}]]></date>
+    <note><![CDATA[${movement.note}]]></note>
+  </movement>
+</prestashop>`;
 
+  await moduleApi.post('/stockapi.php?action=add_movement', xml);
+}
 // ==========================================
 // 3. HELPERS XML
 // ==========================================
@@ -280,77 +311,25 @@ async function fetchOptionValueNames(): Promise<Map<string, string>> {
 }
 
 // ==========================================
-// 5. MOUVEMENTS (stockage serveur via stockapi.php + /api/stock_movements)
+// 5. MOUVEMENTS (stockage local)
 // ==========================================
+const MOVEMENTS_KEY = 'ps_stock_movements_v1';
+const MAX_MOVEMENTS = 1000;
 
-// Raisons ps_stock_mvt_reason : 1=Augmentation, 2=Diminution,
-//   3=Commande client (sortie), 10=Retour produit (entrée)
-async function writeNativeStockMvt(
-  physQty: number,
-  sign: 1 | -1,
-  reason: number,
-  date: string
-): Promise<void> {
-  const dateSql = new Date(date).toISOString().replace('T', ' ').slice(0, 19);
-  const xml =
-    '<?xml version="1.0" encoding="UTF-8"?>' +
-    '<prestashop xmlns:xlink="http://www.w3.org/1999/xlink"><stock_mvt>' +
-    '<id_employee><![CDATA[1]]></id_employee>' +
-    '<id_stock><![CDATA[0]]></id_stock>' +
-    `<id_stock_mvt_reason><![CDATA[${reason}]]></id_stock_mvt_reason>` +
-    `<physical_quantity><![CDATA[${physQty}]]></physical_quantity>` +
-    `<sign><![CDATA[${sign}]]></sign>` +
-    '<price_te><![CDATA[0]]></price_te>' +
-    `<date_add><![CDATA[${dateSql}]]></date_add>` +
-    '</stock_mvt></prestashop>';
+function readMovements(): StockMovement[] {
   try {
-    await api.post('/stock_movements', xml);
+    const raw = localStorage.getItem(MOVEMENTS_KEY);
+    return raw ? (JSON.parse(raw) as StockMovement[]) : [];
   } catch {
-    console.error('[stockService] Impossible d\'écrire dans ps_stock_mvt');
+    return [];
   }
 }
 
-function buildMovementXml(m: StockMovement): string {
-  return '<?xml version="1.0" encoding="UTF-8"?><prestashop><movement>' +
-    `<id><![CDATA[${m.id}]]></id>` +
-    `<key><![CDATA[${m.key}]]></key>` +
-    `<id_product><![CDATA[${m.productId}]]></id_product>` +
-    `<product_name><![CDATA[${m.productName}]]></product_name>` +
-    `<combination_label><![CDATA[${m.combinationLabel}]]></combination_label>` +
-    `<id_stock_available><![CDATA[${m.stockId}]]></id_stock_available>` +
-    `<quantity_before><![CDATA[${m.quantityBefore}]]></quantity_before>` +
-    `<quantity_added><![CDATA[${m.quantityAdded}]]></quantity_added>` +
-    `<quantity_after><![CDATA[${m.quantityAfter}]]></quantity_after>` +
-    `<date><![CDATA[${m.date}]]></date>` +
-    `<note><![CDATA[${m.note}]]></note>` +
-    '</movement></prestashop>';
-}
-
-function parseMovementsXml(xmlString: string): StockMovement[] {
-  const parsed = parseXML(xmlString) as any;
-  const raw = toArray(
-    parsed?.prestashop?.movements?.movement ?? parsed?.movements?.movement
-  );
-  return raw.map((m: any) => ({
-    id:               String(m.movement_id ?? ''),
-    key:              String(m.line_key    ?? ''),
-    productId:        String(m.id_product  ?? ''),
-    productName:      String(m.product_name      ?? ''),
-    combinationLabel: String(m.combination_label ?? ''),
-    stockId:          String(m.id_stock_available ?? ''),
-    quantityBefore:   parseInt(String(m.quantity_before ?? '0'), 10),
-    quantityAdded:    parseInt(String(m.quantity_added  ?? '0'), 10),
-    quantityAfter:    parseInt(String(m.quantity_after  ?? '0'), 10),
-    date:             String(m.date_add ?? '').replace(' ', 'T') + (m.date_add ? 'Z' : ''),
-    note:             String(m.note ?? ''),
-  }));
-}
-
-async function writeMovement(m: StockMovement): Promise<void> {
+function writeMovement(m: StockMovement): void {
+  const all = readMovements();
+  all.unshift(m);
   try {
-    await moduleApi.post('/stockapi.php', buildMovementXml(m), {
-      params: { action: 'add_movement' },
-    });
+    localStorage.setItem(MOVEMENTS_KEY, JSON.stringify(all.slice(0, MAX_MOVEMENTS)));
   } catch {
     console.error('[stockService] Impossible de sauvegarder le mouvement');
   }
@@ -444,96 +423,67 @@ export const stockService = {
    * Retourne la ligne mise à jour.
    */
   addStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
-    if (qty <= 0) throw new Error('La quantité doit être > 0');
+  if (qty <= 0) throw new Error('La quantité doit être > 0');
 
-    const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, qty);
-    const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
+  // 1. Mettre à jour ps_stock_available (via stockapi.php)
+  const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, qty);
+  const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
 
-    const result = parseStockUpdateResponse(rawXml);
-    if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
+  const result = parseStockUpdateResponse(rawXml);
+  if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
 
-    const newQty = result.newQty;
-    const movement: StockMovement = {
-      id:               `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      key:              line.key,
-      productId:        line.productId,
-      productName:      line.productName,
-      combinationLabel: line.combinationLabel,
-      stockId:          line.stockId,
-      quantityBefore:   line.quantity,
-      quantityAdded:    qty,
-      quantityAfter:    newQty,
-      date:             new Date().toISOString(),
-      note,
-    };
-    await Promise.all([
-      writeMovement(movement),
-      writeNativeStockMvt(qty, 1, 1, movement.date), // raison 1 = Augmentation
-    ]);
+  const newQty = result.newQty;
 
-    return { ...line, quantity: newQty };
+  // 2. Écrire dans ps_stock_mvt (API native PS) pour que le backoffice voit le mouvement
+  const movementId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  
+  // Construire le XML pour l'API native
+  // 2. Écrire dans ps_stock_mvt (API native PS)
+const nativeXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_mvt>
+    <id_employee><![CDATA[1]]></id_employee>
+    <id_stock><![CDATA[${line.stockId}]]></id_stock>
+    <id_stock_mvt_reason><![CDATA[1]]></id_stock_mvt_reason>
+    <physical_quantity><![CDATA[${qty}]]></physical_quantity>
+    <sign><![CDATA[1]]></sign>
+    <price_te><![CDATA[0]]></price_te>
+    <date_add><![CDATA[${new Date().toISOString().slice(0, 19).replace('T', ' ')}]]></date_add>
+  </stock_mvt>
+</prestashop>`;
+
+try {
+  const nativeResponse = await api.post('/stock_movements', nativeXml);
+  console.log('✅ Mouvement enregistré dans backoffice PS', nativeResponse.data);
+} catch (err: any) {
+  console.error('❌ Erreur API native:', err.response?.status, err.response?.data);
+}
+
+  // 3. Envoyer le mouvement à ton historique custom (optionnel)
+  await sendMovementToAPI({
+    id: movementId,
+    key: line.key,
+    id_product: parseInt(line.productId, 10),
+    product_name: line.productName,
+    combination_label: line.combinationLabel,
+    id_stock_available: parseInt(line.stockId, 10),
+    quantity_before: line.quantity,
+    quantity_added: qty,
+    quantity_after: newQty,
+    note,
+    date: new Date().toISOString(),
+  });
+
+  return { ...line, quantity: newQty };
+},
+  /** Récupère l'historique des mouvements, filtrables par produit */
+  getMovements: (productId?: string): StockMovement[] => {
+    const all = readMovements();
+    return productId ? all.filter(m => m.productId === productId) : all;
   },
 
-  /** Récupère l'historique des mouvements depuis le serveur */
-  getMovements: async (productId?: string): Promise<StockMovement[]> => {
-    try {
-      const { data } = await moduleApi.get('/stockapi.php', { params: { action: 'movements' } });
-      const all = parseMovementsXml(data);
-      return productId ? all.filter((m: StockMovement) => m.productId === productId) : all;
-    } catch {
-      return [];
-    }
-  },
-
-  /**
-   * Enregistre des mouvements sortie (commande validée) ou entrée (annulation).
-   * Appelle getAllStockLines pour connaître les noms et quantités actuelles.
-   */
-  recordOrderMovements: async (
-    rows: Array<{ productId: string; combinationId: string; quantity: number }>,
-    orderRef: string,
-    direction: 'sortie' | 'entree'
-  ): Promise<void> => {
-    if (!rows.length) return;
-    const lines = await stockService.getAllStockLines();
-    const lineMap = new Map(lines.map(l => [l.key, l]));
-    const note = direction === 'sortie'
-      ? `Sortie commande ${orderRef}`
-      : `Retour/annulation ${orderRef}`;
-
-    for (const row of rows) {
-      const key = `${row.productId}_${row.combinationId}`;
-      const line = lineMap.get(key);
-      if (!line) continue;
-
-      const delta = direction === 'sortie' ? -row.quantity : row.quantity;
-      const quantityAfter  = line.quantity;
-      const quantityBefore = quantityAfter - delta;
-
-      const movement: StockMovement = {
-        id:               `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-        key,
-        productId:        line.productId,
-        productName:      line.productName,
-        combinationLabel: line.combinationLabel,
-        stockId:          line.stockId,
-        quantityBefore,
-        quantityAdded:    delta,
-        quantityAfter,
-        date:             new Date().toISOString(),
-        note,
-      };
-      const sign: 1 | -1   = direction === 'sortie' ? -1 : 1;
-      const reason          = direction === 'sortie' ? 3 : 10; // 3=Commande client, 10=Retour
-      await Promise.all([
-        writeMovement(movement),
-        writeNativeStockMvt(row.quantity, sign, reason, movement.date),
-      ]);
-    }
-  },
-
-  /** Supprime tous les mouvements côté serveur */
-  clearMovements: async (): Promise<void> => {
-    await moduleApi.delete('/stockapi.php', { params: { action: 'movements' } });
+  /** Supprime tous les mouvements locaux */
+  clearMovements: (): void => {
+    localStorage.removeItem(MOVEMENTS_KEY);
   },
 };

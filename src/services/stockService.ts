@@ -196,6 +196,19 @@ interface RawStockAvailable {
   quantity: number;
 }
 
+function extractId(field: unknown): string {
+  if (!field) return '';
+  if (typeof field === 'string' || typeof field === 'number') return String(field);
+  if (typeof field === 'object') {
+    const obj = field as Record<string, unknown>;
+    // Most common PS shapes
+    return String(
+      obj['#text'] ?? obj['_cdata'] ?? obj['@_href']?.toString().split('/').pop() ?? ''
+    );
+  }
+  return '';
+}
+
 async function fetchProducts(): Promise<Map<string, RawProduct>> {
   const res = await api.get('/products?display=full');
   const root = getRoot(parseXML(res.data));
@@ -600,10 +613,116 @@ addMouvementStock: async (
 
 
   /** Récupère l'historique des mouvements, filtrables par produit */
-  getMovements: (productId?: string): StockMovement[] => {
-    const all = readMovements();
-    return productId ? all.filter(m => m.productId === productId) : all;
-  },
+  /**
+ * Récupère l'historique des mouvements depuis l'API native PrestaShop
+ * @param productId - ID du produit (optionnel)
+ * @returns Liste des mouvements
+ */
+
+/**
+ * Récupère l'historique des mouvements depuis l'API native PrestaShop
+ * @param productId - ID du produit (optionnel)
+ * @returns Liste des mouvements
+ */
+/**
+ /**
+ * Récupère l'historique (snapshot + tentative API PrestaShop)
+ * @param productId - ID produit OU reference (ex: M_02)
+ */
+
+ // Version simplifiée : retourne tous les mouvements bruts
+getMovements: async (productId?: string): Promise<StockMovement[]> => {
+  console.log('[getMovements] === DÉBUT ===');
+  console.log('[getMovements] productId reçu:', productId);
+  
+  try {
+    const url = '/stock_movements?display=full';
+    console.log('[getMovements] 1. URL appelée:', url);
+    
+    const res = await api.get(url);
+    console.log('[getMovements] 2. Réponse reçue - status:', res.status);
+    
+    console.log('[getMovements] 3. Parse XML...');
+    const parsed = parseXML(res.data) as any;
+    console.log('[getMovements] 4. Parse terminé');
+    
+    // 🔍 LOG CRITIQUE: Voir ce que parseXML retourne vraiment
+    console.log('[getMovements] 4b. Type de parsed:', typeof parsed);
+    console.log('[getMovements] 4c. Clés de parsed:', parsed ? Object.keys(parsed) : 'parsed est null/undefined');
+    console.log('[getMovements] 4d. parsed complet (extrait):', JSON.stringify(parsed, null, 2).substring(0, 500));
+    
+    // Essayer différentes structures possibles
+    const possibleRoots = ['prestashop', 'Prestashop', 'root', ''];
+    let root = null;
+    
+    for (const rootName of possibleRoots) {
+      if (rootName && parsed?.[rootName]) {
+        root = parsed[rootName];
+        console.log(`[getMovements] Structure trouvée avec racine: ${rootName}`);
+        break;
+      }
+    }
+    
+    if (!root && parsed && typeof parsed === 'object') {
+      // Si pas de racine nommée, prendre parsed lui-même
+      root = parsed;
+      console.log('[getMovements] Utilisation de parsed comme racine directe');
+    }
+    
+    console.log('[getMovements] 5. root existe?', !!root);
+    
+    if (root) {
+      console.log('[getMovements] 5b. Clés de root:', Object.keys(root));
+      
+      // Chercher stock_mvts ou stock_movements
+      const stockMvts = root?.stock_mvts || root?.stock_movements;
+      console.log('[getMovements] 6. stock_mvts/stock_movements existe?', !!stockMvts);
+      
+      if (stockMvts) {
+        console.log('[getMovements] 6b. Clés de stockMvts:', Object.keys(stockMvts));
+        const rawMovements = toArray(stockMvts?.stock_mvt ?? []);
+        console.log('[getMovements] 7. rawMovements trouvés:', rawMovements.length);
+        
+        if (rawMovements.length > 0) {
+          // Traiter les mouvements
+          const movements = rawMovements.map((mvt: any) => {
+            const id = String(mvt.id?.['#text'] ?? mvt.id ?? '');
+            const id_stock = String(mvt.id_stock?.['#text'] ?? mvt.id_stock ?? '');
+            const physical_quantity = parseInt(mvt.physical_quantity?.['#text'] ?? mvt.physical_quantity ?? '0', 10);
+            const sign = parseInt(mvt.sign?.['#text'] ?? mvt.sign ?? '1', 10);
+            const date_add = mvt.date_add?.['#text'] ?? mvt.date_add ?? '';
+            
+            return {
+              id: id,
+              key: id,
+              productId: 'unknown',
+              productName: 'Produit inconnu',
+              combinationLabel: '',
+              stockId: id_stock,
+              quantityBefore: 0,
+              quantityAdded: physical_quantity * sign,
+              quantityAfter: 0,
+              date: date_add,
+              note: `Mouvement ${sign === 1 ? 'entrée' : 'sortie'} de ${physical_quantity}`
+            };
+          });
+          
+          console.log(`[getMovements] ✅ ${movements.length} mouvements retournés`);
+          return movements;
+        }
+      }
+    }
+    
+    console.warn('[getMovements] Aucun mouvement trouvé');
+    return [];
+    
+  } catch (err: any) {
+    console.error('[getMovements] ❌ ERREUR:', err.message);
+    return [];
+  }
+},
+// Helper — handles all PS XML field shapes
+
 
   /** Supprime tous les mouvements locaux */
   clearMovements: (): void => {

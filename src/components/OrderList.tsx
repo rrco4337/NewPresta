@@ -2,12 +2,14 @@ import React, { useEffect, useState, useCallback } from 'react';
 import {
   fetchPSOrders,
   updatePSOrderStatus,
+  fetchOrderRows,
   ALLOWED_PS_STATES,
   PS_STATE_LABELS,
   type PSOrder,
   transformCartToOrder,
   deleteZombieCarts,
 } from '../services/orderService';
+import { stockService } from '../services/stockService';
 import './OrderList.css';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,9 +131,23 @@ const handleConfirmChange = async () => {
     }
 
     if (success) {
-      // On rafraîchit la liste complète car l'ID de la commande 
+      // Enregistrer les mouvements de stock
+      const ref = order.reference || `#${order.id}`;
+      if (newValue === 2) {
+        // Sortie stock : commande validée
+        const rows = order.cartRows?.length
+          ? order.cartRows
+          : await fetchOrderRows(order.id);
+        stockService.recordOrderMovements(rows, ref, 'sortie').catch(() => {});
+      } else if (newValue === 6 && oldValue === 2) {
+        // Entrée stock : commande annulée (retour)
+        const rows = await fetchOrderRows(order.id);
+        stockService.recordOrderMovements(rows, ref, 'entree').catch(() => {});
+      }
+
+      // On rafraîchit la liste complète car l'ID de la commande
       // risque d'avoir changé (PrestaShop crée un nouvel ID Order différent du Cart ID)
-      await load(); 
+      await load();
     }
   } catch (err) {
     setError("L'opération a échoué.");

@@ -476,6 +476,98 @@ try {
 
   return { ...line, quantity: newQty };
 },
+  /**
+   * Retire une quantité du stock d'une ligne et enregistre le mouvement.
+   * Retourne la ligne mise à jour.
+   */
+  removeStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
+    if (qty <= 0) throw new Error('La quantité doit être > 0');
+    if (qty > line.quantity) throw new Error(`Stock insuffisant (disponible : ${line.quantity})`);
+
+    // 1. Mettre à jour ps_stock_available via stockapi.php (delta négatif)
+    const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, -qty);
+    const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
+
+    const result = parseStockUpdateResponse(rawXml);
+    if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
+
+    const newQty = result.newQty;
+
+    // 2. Écrire dans ps_stock_mvt (API native PS) — sign=-1 pour une sortie
+    const nativeXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_mvt>
+    <id_employee><![CDATA[1]]></id_employee>
+    <id_stock><![CDATA[${line.stockId}]]></id_stock>
+    <id_stock_mvt_reason><![CDATA[2]]></id_stock_mvt_reason>
+    <physical_quantity><![CDATA[${qty}]]></physical_quantity>
+    <sign><![CDATA[-1]]></sign>
+    <price_te><![CDATA[0]]></price_te>
+    <date_add><![CDATA[${new Date().toISOString().slice(0, 19).replace('T', ' ')}]]></date_add>
+  </stock_mvt>
+</prestashop>`;
+
+    try {
+      await api.post('/stock_movements', nativeXml);
+    } catch (err: any) {
+      console.error('❌ Erreur API native (sortie):', err.response?.status, err.response?.data);
+    }
+
+    // 3. Envoyer le mouvement à l'historique custom
+    const movementId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    await sendMovementToAPI({
+      id: movementId,
+      key: line.key,
+      id_product: parseInt(line.productId, 10),
+      product_name: line.productName,
+      combination_label: line.combinationLabel,
+      id_stock_available: parseInt(line.stockId, 10),
+      quantity_before: line.quantity,
+      quantity_added: -qty,
+      quantity_after: newQty,
+      note,
+      date: new Date().toISOString(),
+    });
+
+    return { ...line, quantity: newQty };
+  },
+
+  /**
+   * Enregistre les mouvements de stock pour toutes les lignes d'une commande.
+   * direction='sortie' : commande validée (paiement OK)
+   * direction='entree' : commande annulée (retour en stock)
+   */
+  recordOrderMovements: async (
+    rows: Array<{ productId: string; combinationId: string; quantity: number }>,
+    orderRef: string,
+    direction: 'sortie' | 'entree'
+  ): Promise<void> => {
+    const allLines = await stockService.getAllStockLines();
+    const lineMap = new Map(allLines.map(l => [l.key, l]));
+
+    for (const row of rows) {
+      const attrId = row.combinationId === '0' ? '0' : row.combinationId;
+      const key = `${row.productId}_${attrId}`;
+      const line = lineMap.get(key);
+      if (!line) {
+        console.warn(`[stockService] recordOrderMovements: ligne introuvable pour ${key}`);
+        continue;
+      }
+      const note = direction === 'sortie'
+        ? `Sortie commande ${orderRef}`
+        : `Retour commande ${orderRef}`;
+      try {
+        if (direction === 'sortie') {
+          await stockService.removeStock(line, row.quantity, note);
+        } else {
+          await stockService.addStock(line, row.quantity, note);
+        }
+      } catch (err) {
+        console.error(`[stockService] recordOrderMovements: erreur pour ${key}`, err);
+      }
+    }
+  },
+
   /** Récupère l'historique des mouvements, filtrables par produit */
   getMovements: (productId?: string): StockMovement[] => {
     const all = readMovements();

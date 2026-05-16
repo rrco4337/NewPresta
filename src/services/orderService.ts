@@ -9,6 +9,12 @@ const api = axios.create({
 // TYPES
 // ==========================================
 
+export interface CartRow {
+  productId: string;
+  combinationId: string; // '0' pour produit simple
+  quantity: number;
+}
+
 export interface PSOrder {
   id: string;
   reference: string;
@@ -22,6 +28,7 @@ export interface PSOrder {
   id_address_invoice?: string;
   id_carrier?: string;
   id_currency?: string;
+  cartRows?: CartRow[];
 }
 
 // 📦 Les 3 statuts selon les spécifications J2
@@ -221,15 +228,20 @@ async function parseCartsXml(
         el.querySelectorAll('associations cart_rows cart_row, cart_rows cart_row, cart_row')
       );
 
+      const cartRows: CartRow[] = rows
+        .map(row => ({
+          productId:     row.querySelector('id_product')?.textContent?.trim() ?? '',
+          combinationId: row.querySelector('id_product_attribute')?.textContent?.trim() ?? '0',
+          quantity:      parseInt(row.querySelector('quantity')?.textContent?.trim() ?? '0', 10),
+        }))
+        .filter(r => r.productId && r.quantity > 0);
+
       const rowTotals = await Promise.all(
-        rows.map(async (row) => {
-          const productId = row.querySelector('id_product')?.textContent?.trim() ?? '';
-          const attrId   = row.querySelector('id_product_attribute')?.textContent?.trim() ?? '0';
-          const qty = parseInt(row.querySelector('quantity')?.textContent?.trim() ?? '0', 10);
-          if (!productId || isNaN(qty) || qty === 0) return 0;
-          const basePrice   = await fetchProductPrice(productId);
-          const priceImpact = attrId !== '0' ? await fetchCombinationPriceImpact(attrId) : 0;
-          return (basePrice + priceImpact) * qty;
+        cartRows.map(async (row) => {
+          if (!row.productId || row.quantity === 0) return 0;
+          const basePrice   = await fetchProductPrice(row.productId);
+          const priceImpact = row.combinationId !== '0' ? await fetchCombinationPriceImpact(row.combinationId) : 0;
+          return (basePrice + priceImpact) * row.quantity;
         })
       );
 
@@ -246,7 +258,8 @@ async function parseCartsXml(
         id_address_delivery,
         id_address_invoice,
         id_carrier,
-        id_currency
+        id_currency,
+        cartRows,
       };
     })
   );
@@ -374,4 +387,25 @@ export function getOrdersStats(orders: PSOrder[]) {
     montantTotalPaye,
     montantTotalPaniers,
   };
+}
+
+// ==========================================
+// LIGNES D'UNE COMMANDE EXISTANTE
+// ==========================================
+
+export async function fetchOrderRows(orderId: string): Promise<CartRow[]> {
+  try {
+    const res = await api.get(`/orders/${orderId}?display=full`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const details = Array.from(doc.querySelectorAll('order_detail, order_row'));
+    return details
+      .map(el => ({
+        productId:     el.querySelector('product_id')?.textContent?.trim() ?? '',
+        combinationId: el.querySelector('product_attribute_id')?.textContent?.trim() ?? '0',
+        quantity:      parseInt(el.querySelector('product_quantity')?.textContent?.trim() ?? '0', 10),
+      }))
+      .filter(r => r.productId && r.quantity > 0);
+  } catch {
+    return [];
+  }
 }

@@ -411,9 +411,10 @@
 .su-td-date { white-space: nowrap; font-family: var(--su-font-mono); font-size: 12px; }
 .su-td-time { color: var(--su-text-muted); font-size: 11px; }
 .su-td-product { font-weight: 500; }
-.su-td-num  { text-align: right; font-family: var(--su-font-mono); }
-.su-td-added { color: var(--su-ok); font-weight: 600; }
-.su-td-after { font-weight: 600; }
+.su-td-num    { text-align: right; font-family: var(--su-font-mono); }
+.su-td-added  { color: var(--su-ok); font-weight: 600; }
+.su-td-removed { color: var(--su-danger); font-weight: 600; }
+.su-td-after  { font-weight: 600; }
 .su-td-note { color: var(--su-text-muted); font-style: italic; font-size: 12px; }
 .su-muted { color: var(--su-text-muted); }
 

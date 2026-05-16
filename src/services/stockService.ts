@@ -54,7 +54,38 @@ const moduleApi: AxiosInstance = axios.create({
   },
 });
 
+async function sendMovementToAPI(movement: {
+  id: string;
+  key: string;
+  id_product: number;
+  product_name: string;
+  combination_label: string;
+  id_stock_available: number;
+  quantity_before: number;
+  quantity_added: number;
+  quantity_after: number;
+  note: string;
+  date?: string;
+}): Promise<void> {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <movement>
+    <id><![CDATA[${movement.id}]]></id>
+    <key><![CDATA[${movement.key}]]></key>
+    <id_product><![CDATA[${movement.id_product}]]></id_product>
+    <product_name><![CDATA[${movement.product_name}]]></product_name>
+    <combination_label><![CDATA[${movement.combination_label}]]></combination_label>
+    <id_stock_available><![CDATA[${movement.id_stock_available}]]></id_stock_available>
+    <quantity_before><![CDATA[${movement.quantity_before}]]></quantity_before>
+    <quantity_added><![CDATA[${movement.quantity_added}]]></quantity_added>
+    <quantity_after><![CDATA[${movement.quantity_after}]]></quantity_after>
+    <date><![CDATA[${movement.date || new Date().toISOString()}]]></date>
+    <note><![CDATA[${movement.note}]]></note>
+  </movement>
+</prestashop>`;
 
+  await moduleApi.post('/stockapi.php?action=add_movement', xml);
+}
 // ==========================================
 // 3. HELPERS XML
 // ==========================================
@@ -392,33 +423,59 @@ export const stockService = {
    * Retourne la ligne mise à jour.
    */
   addStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
-    if (qty <= 0) throw new Error('La quantité doit être > 0');
+  if (qty <= 0) throw new Error('La quantité doit être > 0');
 
-    const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, qty);
-    const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
+  // 1. Mettre à jour ps_stock_available (via stockapi.php)
+  const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, qty);
+  const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
 
-    const result = parseStockUpdateResponse(rawXml);
-    if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
+  const result = parseStockUpdateResponse(rawXml);
+  if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
 
-    const newQty = result.newQty;
-    const movement: StockMovement = {
-      id:               `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      key:              line.key,
-      productId:        line.productId,
-      productName:      line.productName,
-      combinationLabel: line.combinationLabel,
-      stockId:          line.stockId,
-      quantityBefore:   line.quantity,
-      quantityAdded:    qty,
-      quantityAfter:    newQty,
-      date:             new Date().toISOString(),
-      note,
-    };
-    writeMovement(movement);
+  const newQty = result.newQty;
 
-    return { ...line, quantity: newQty };
-  },
+  // 2. Écrire dans ps_stock_mvt (API native PS) pour que le backoffice voit le mouvement
+  const movementId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  
+  // Construire le XML pour l'API native
+  // 2. Écrire dans ps_stock_mvt (API native PS)
+const nativeXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_mvt>
+    <id_employee><![CDATA[1]]></id_employee>
+    <id_stock><![CDATA[${line.stockId}]]></id_stock>
+    <id_stock_mvt_reason><![CDATA[1]]></id_stock_mvt_reason>
+    <physical_quantity><![CDATA[${qty}]]></physical_quantity>
+    <sign><![CDATA[1]]></sign>
+    <price_te><![CDATA[0]]></price_te>
+    <date_add><![CDATA[${new Date().toISOString().slice(0, 19).replace('T', ' ')}]]></date_add>
+  </stock_mvt>
+</prestashop>`;
 
+try {
+  const nativeResponse = await api.post('/stock_movements', nativeXml);
+  console.log('✅ Mouvement enregistré dans backoffice PS', nativeResponse.data);
+} catch (err: any) {
+  console.error('❌ Erreur API native:', err.response?.status, err.response?.data);
+}
+
+  // 3. Envoyer le mouvement à ton historique custom (optionnel)
+  await sendMovementToAPI({
+    id: movementId,
+    key: line.key,
+    id_product: parseInt(line.productId, 10),
+    product_name: line.productName,
+    combination_label: line.combinationLabel,
+    id_stock_available: parseInt(line.stockId, 10),
+    quantity_before: line.quantity,
+    quantity_added: qty,
+    quantity_after: newQty,
+    note,
+    date: new Date().toISOString(),
+  });
+
+  return { ...line, quantity: newQty };
+},
   /** Récupère l'historique des mouvements, filtrables par produit */
   getMovements: (productId?: string): StockMovement[] => {
     const all = readMovements();

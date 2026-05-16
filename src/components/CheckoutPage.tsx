@@ -7,7 +7,6 @@ import {
   createAddress,
   createPSCart,
   createPSOrder,
-  updateStockAfterOrder,
   type Address,
   type CreateAddressData,
 } from '../services/customerService';
@@ -140,7 +139,6 @@ const CheckoutPage: React.FC = () => {
         items: checkoutItems,
         shippingCost,
       });
-      await updateStockAfterOrder(checkoutItems);
       clear();
       navigate(`/shop/confirmation/${orderId}`, { replace: true });
     } catch (err: unknown) {

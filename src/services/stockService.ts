@@ -568,6 +568,37 @@ try {
     }
   },
 
+  // Enregistre un mouvement dans ps_stock_mvt (backoffice PS)
+// Enregistre un mouvement dans ps_stock_mvt (backoffice PS)
+addMouvementStock: async (
+  stockId: string,
+  productId: string,
+  combinationId: string,
+  quantityAdded: number,
+  quantityBefore: number
+): Promise<void> => {
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <stock_mvt>
+    <id_employee><![CDATA[1]]></id_employee>
+    <id_stock><![CDATA[${stockId}]]></id_stock>
+    <id_stock_mvt_reason><![CDATA[1]]></id_stock_mvt_reason>
+    <physical_quantity><![CDATA[${Math.abs(quantityAdded)}]]></physical_quantity>
+    <sign><![CDATA[${quantityAdded > 0 ? 1 : -1}]]></sign>
+    <price_te><![CDATA[0]]></price_te>
+    <date_add><![CDATA[${now}]]></date_add>
+  </stock_mvt>
+</prestashop>`;
+  
+  try {
+    await api.post('/stock_movements', xml);
+  } catch (err) {
+    console.warn('[setStock] Impossible d\'enregistrer le mouvement', err);
+  }
+},
+
+
   /** Récupère l'historique des mouvements, filtrables par produit */
   getMovements: (productId?: string): StockMovement[] => {
     const all = readMovements();

@@ -53,6 +53,13 @@ const IconTrash = () => (
     <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
   </svg>
 );
+const IconLayers = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+    <polyline points="2 17 12 22 22 17"/>
+    <polyline points="2 12 12 17 22 12"/>
+  </svg>
+);
 const IconSettings = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3"/>
@@ -123,6 +130,7 @@ const navModules: NavModule[] = [
       { label: 'Import fichiers',   path: '/import/fichiers' },
     ],
   },
+  { label: 'Stock',     path: '/stock',  icon: <IconLayers />, section: 'Catalogue' },
   { label: 'Commandes', path: '/orders', icon: <IconCart />, section: 'Ventes' },
   { label: 'Clients',   path: '/clients', icon: <IconUsers />, disabled: true, section: 'Ventes' },
   { label: 'Audit import', path: '/audit/import', icon: <IconChart />, section: 'Outils' },

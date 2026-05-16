@@ -44,14 +44,16 @@ const api: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' },
 });
 
+// Client vers stockapi.php (fichier standalone à la racine PS, pas de module requis)
 const moduleApi: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_PRESTASHOP_URL || 'http://127.0.0.1:8080',  // ✅
+  baseURL: import.meta.env.VITE_PRESTASHOP_URL || 'http://127.0.0.1:8080',
   headers: {
     'Content-Type': 'application/xml',
     'Accept':       'application/xml',
     'X-Api-Key':    import.meta.env.VITE_STOCKAPI_KEY ?? '',
   },
 });
+
 
 // ==========================================
 // 3. HELPERS XML
@@ -85,15 +87,12 @@ function buildStockUpdateXml(
   idProductAttribute: string | number,
   delta: number
 ): string {
-  // XML compact sans espaces ni retours à la ligne
   return '<?xml version="1.0" encoding="UTF-8"?>' +
-    '<prestashop>' +
-    '<stock_update>' +
+    '<prestashop><stock_update>' +
     '<id_product><![CDATA[' + idProduct + ']]></id_product>' +
     '<id_product_attribute><![CDATA[' + idProductAttribute + ']]></id_product_attribute>' +
     '<delta><![CDATA[' + delta + ']]></delta>' +
-    '</stock_update>' +
-    '</prestashop>';
+    '</stock_update></prestashop>';
 }
 
 function parseStockUpdateResponse(xmlString: string): {
@@ -103,14 +102,12 @@ function parseStockUpdateResponse(xmlString: string): {
 } {
   const parsed = parseXML(xmlString) as any;
   const node   = parsed?.prestashop?.stock_update ?? parsed?.stock_update;
-
   if (!node) return { success: false, newQty: 0, error: 'Réponse XML invalide' };
-
-  const success = String(node.success ?? '0') === '1';
-  const newQty  = parseInt(String(node.new_quantity ?? '0'), 10);
-  const error   = node.error ? String(node.error) : undefined;
-
-  return { success, newQty, error };
+  return {
+    success: String(node.success ?? '0') === '1',
+    newQty:  parseInt(String(node.new_quantity ?? '0'), 10),
+    error:   node.error ? String(node.error) : undefined,
+  };
 }
 
 function getRoot(parsed: unknown): Record<string, unknown> | null {
@@ -394,49 +391,16 @@ export const stockService = {
    * Ajoute une quantité au stock d'une ligne et enregistre le mouvement.
    * Retourne la ligne mise à jour.
    */
- addStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
-  console.log('🔵 [DEBUG] 1 - addStock appelé', { 
-    productId: line.productId, 
-    combinationId: line.combinationId,
-    qty, 
-    note 
-  });
-  
-  if (qty <= 0) throw new Error('La quantité doit être > 0');
-  console.log('✅ [DEBUG] 2 - Quantité valide');
+  addStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
+    if (qty <= 0) throw new Error('La quantité doit être > 0');
 
-  // ── Appel du module PS via XML ───────────────────────────────────
-  const xml = buildStockUpdateXml(
-    line.productId,
-    line.combinationId ?? 0,
-    qty
-  );
-  console.log('✅ [DEBUG] 3 - XML construit, longueur:', xml.length);
+    const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, qty);
+    const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
 
-  try {
-    console.log('🟡 [DEBUG] 4 - Envoi de la requête vers:', moduleApi.defaults.baseURL + '/module/stockapi/update');
-    console.log('🟡 [DEBUG] 4b - Headers:', moduleApi.defaults.headers);
-    
-    const { data: rawXml } = await moduleApi.post(
-      '/module/stockapi/update',
-      xml
-    );
-    
-    console.log('✅ [DEBUG] 5 - Réponse reçue, status: 200');
-    console.log('✅ [DEBUG] 5b - Réponse XML:', rawXml.substring(0, 200));
-    
     const result = parseStockUpdateResponse(rawXml);
-    console.log('✅ [DEBUG] 6 - Résultat parsé:', result);
-    
-    if (!result.success) {
-      console.error('❌ [DEBUG] 7 - Erreur serveur:', result.error);
-      throw new Error(result.error ?? 'Erreur serveur');
-    }
-    
-    console.log('✅ [DEBUG] 8 - Succès, nouvelle quantité:', result.newQty);
-    const newQty = result.newQty;
+    if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
 
-    // ── Enregistrement du mouvement local (inchangé) ─────────────────
+    const newQty = result.newQty;
     const movement: StockMovement = {
       id:               `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       key:              line.key,
@@ -451,38 +415,9 @@ export const stockService = {
       note,
     };
     writeMovement(movement);
-    console.log('✅ [DEBUG] 9 - Mouvement enregistré');
 
     return { ...line, quantity: newQty };
-  } catch (error: any) {
-    console.error('❌ [DEBUG] ERREUR CATASTROPHIQUE:', {
-      message: error.message,
-      code: error.code,
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      data: error.response?.data,
-      headers: error.response?.headers,
-      config: {
-        url: error.config?.url,
-        method: error.config?.method,
-        headers: error.config?.headers,
-        data: error.config?.data
-      }
-    });
-    
-    // Si la réponse contient du XML d'erreur, tentez de le parser
-    if (error.response?.data) {
-      try {
-        const errorResult = parseStockUpdateResponse(error.response.data);
-        console.error('❌ [DEBUG] Erreur parsée du serveur:', errorResult);
-      } catch (e) {
-        console.error('❌ [DEBUG] Impossible de parser la réponse d\'erreur');
-      }
-    }
-    
-    throw error;
-  }
-},
+  },
 
   /** Récupère l'historique des mouvements, filtrables par produit */
   getMovements: (productId?: string): StockMovement[] => {

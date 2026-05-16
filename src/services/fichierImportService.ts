@@ -1,6 +1,5 @@
 import axios from 'axios';
 import JSZip from 'jszip';
-
 import {
   findCustomerByEmail,
   createAddress,
@@ -19,6 +18,8 @@ import {
   validateDateField,
   validatePositiveAmount,
 } from './importValidationService';
+import { stockService } from './stockService';
+
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
@@ -423,6 +424,19 @@ async function getStockAvailableId(productId: string, combinationId = '0'): Prom
 }
 
 async function setStock(stockId: string, productId: string, combinationId: string, qty: number): Promise<void> {
+  // 1. Récupérer la quantité actuelle AVANT modification
+  let currentQty = 0;
+  try {
+    const currentRes = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
+    const currentDoc = new DOMParser().parseFromString(currentRes.data, 'text/xml');
+    currentQty = parseInt(currentDoc.querySelector('quantity')?.textContent ?? '0', 10);
+  } catch (err) {
+    console.warn('[setStock] Impossible de lire la quantité actuelle', err);
+  }
+
+  const delta = qty - currentQty;
+
+  // 2. Mettre à jour le stock
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_available>
@@ -437,6 +451,11 @@ async function setStock(stockId: string, productId: string, combinationId: strin
   </stock_available>
 </prestashop>`;
   await api.put(`/stock_availables/${stockId}`, xml);
+
+  // 3. Si la quantité a changé, enregistrer un mouvement
+  if (delta !== 0) {
+    await stockService.addMouvementStock(stockId, productId, combinationId, delta, currentQty);
+  }
 }
 
 async function getOrCreateOption(name: string): Promise<string> {

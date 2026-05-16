@@ -46,7 +46,7 @@ export function StockUpdate() {
     try {
       const data = await stockService.getAllStockLines();
       setLines(data);
-      setMovements(stockService.getMovements());
+      setMovements(await stockService.getMovements());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur de chargement');
     } finally {
@@ -54,7 +54,7 @@ export function StockUpdate() {
     }
   };
 
-  const refreshMovements = () => setMovements(stockService.getMovements());
+  const refreshMovements = async () => setMovements(await stockService.getMovements());
 
   // ──────────────────────────────────────────
   // Filtrage + regroupement par produit
@@ -120,9 +120,9 @@ export function StockUpdate() {
     if (e.key === 'Enter') handleAddStock(line);
   };
 
-  const handleClearMovements = () => {
+  const handleClearMovements = async () => {
     if (!confirm('Vider tout l\'historique des mouvements ?')) return;
-    stockService.clearMovements();
+    await stockService.clearMovements();
     setMovements([]);
   };
 
@@ -321,7 +321,7 @@ export function StockUpdate() {
                     <th>Produit</th>
                     <th>Déclinaison</th>
                     <th className="su-th-num">Avant</th>
-                    <th className="su-th-num">Ajout</th>
+                    <th className="su-th-num">Mouvement</th>
                     <th className="su-th-num">Après</th>
                     <th>Motif</th>
                   </tr>
@@ -336,7 +336,9 @@ export function StockUpdate() {
                       <td className="su-td-product">{m.productName}</td>
                       <td>{m.combinationLabel || <span className="su-muted">—</span>}</td>
                       <td className="su-td-num">{m.quantityBefore}</td>
-                      <td className="su-td-num su-td-added">+{m.quantityAdded}</td>
+                      <td className={`su-td-num ${m.quantityAdded >= 0 ? 'su-td-added' : 'su-td-removed'}`}>
+                        {m.quantityAdded >= 0 ? '+' : ''}{m.quantityAdded}
+                      </td>
                       <td className="su-td-num su-td-after">{m.quantityAfter}</td>
                       <td className="su-td-note">{m.note || <span className="su-muted">—</span>}</td>
                     </tr>

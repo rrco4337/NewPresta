@@ -1,6 +1,5 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
-
 // ==========================================
 // 1. TYPES
 // ==========================================
@@ -287,8 +286,6 @@ export const productService = {
     }
   },
 
- // Dans produitApi.ts, modifiez la méthode updateStock :
-
   updateStock: async (stockId: string, productId: string, quantity: number) => {
     const stockXml = `<?xml version="1.0" encoding="UTF-8"?>
     <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -299,11 +296,10 @@ export const productService = {
         <id_product_attribute><![CDATA[0]]></id_product_attribute>
         <id_shop><![CDATA[1]]></id_shop>
         <id_shop_group><![CDATA[0]]></id_shop_group>
-        <depends_on_stock><![CDATA[0]]></depends_on_stock> 
+        <depends_on_stock><![CDATA[0]]></depends_on_stock>
         <out_of_stock><![CDATA[0]]></out_of_stock>
       </stock_available>
     </prestashop>`;
-    
     return api.put(`/stock_availables/${stockId}`, stockXml);
   },
 

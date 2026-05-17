@@ -2,12 +2,9 @@ import { useState } from 'react';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { StatsCards } from './dashboard/StatsCards';
 import { OrdersTable } from './dashboard/OrdersTable';
+import { SalesChart } from './dashboard/SalesChart';
 import { DashboardSkeleton } from './dashboard/DashboardSkeleton';
 import './Dashboard.css';
-
-interface DashboardFilters {
-  selectedDate: string | null;
-}
 
 const IconRefresh = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -19,14 +16,24 @@ const IconRefresh = () => (
 const IconCalendar = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-    <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+    <line x1="16" y1="2" x2="16" y2="6"/>
+    <line x1="8" y1="2" x2="8" y2="6"/>
     <line x1="3" y1="10" x2="21" y2="10"/>
   </svg>
 );
 
 export default function DashboardPage() {
-  const [filters, setFilters] = useState<DashboardFilters>({ selectedDate: null });
-  const { data, loading, error, refetch } = useDashboardData(filters, 60000);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  const dateRange = selectedDate
+    ? { dateFrom: selectedDate, dateTo: selectedDate }
+    : {};
+
+  const { data, loading, error, refetch } = useDashboardData(dateRange, 60000);
+
+  const todayLabel = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
 
   if (loading) return <DashboardSkeleton />;
 
@@ -42,11 +49,9 @@ export default function DashboardPage() {
 
   if (!data) return null;
 
-  const globalTotalOrders  = data.dailyStats.reduce((s, d) => s + d.orderCount, 0);
-  const globalTotalRevenue = data.dailyStats.reduce((s, d) => s + d.totalAmount, 0);
-  const globalAvg = globalTotalOrders === 0 ? 0 : globalTotalRevenue / globalTotalOrders;
-
-  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  const sectionLabel = selectedDate
+    ? `Statistiques du ${selectedDate}`
+    : 'Vue globale — toutes commandes et paniers';
 
   return (
     <div className="db-page">
@@ -55,7 +60,7 @@ export default function DashboardPage() {
       <div className="db-header">
         <div className="db-header-left">
           <h1 className="db-title">Tableau de bord</h1>
-          <p className="db-subtitle">{today}</p>
+          <p className="db-subtitle">{todayLabel}</p>
         </div>
         <button className="db-refresh-btn" onClick={refetch}>
           <IconRefresh />
@@ -63,48 +68,41 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* ── Filtre date ── */}
+      {/* ── Filtre date précise ── */}
       <div className="db-filter-bar">
         <span className="db-filter-icon"><IconCalendar /></span>
         <span className="db-filter-label">Filtrer par date :</span>
         <input
           type="date"
           className="db-filter-input"
-          value={filters.selectedDate ?? ''}
-          onChange={(e) => setFilters({ selectedDate: e.target.value || null })}
+          value={selectedDate ?? ''}
+          onChange={(e) => setSelectedDate(e.target.value || null)}
         />
-        {filters.selectedDate && (
-          <button className="db-filter-clear" onClick={() => setFilters({ selectedDate: null })}>
+        {selectedDate && (
+          <button className="db-filter-clear" onClick={() => setSelectedDate(null)}>
             ✕ Effacer
           </button>
         )}
-        {filters.selectedDate && (
-          <span className="db-filter-active-badge">
-            {filters.selectedDate}
-          </span>
-        )}
       </div>
 
-      {/* ── KPI globaux ── */}
+      {/* ── KPI cards ── */}
       <div>
-        <p className="db-section-label">Vue globale — toutes commandes</p>
+        <p className="db-section-label">{sectionLabel}</p>
         <StatsCards
-          totalOrders={globalTotalOrders}
-          totalRevenue={globalTotalRevenue}
-          averageOrderValue={globalAvg}
+          totalOrders={data.totalOrders}
+          totalCarts={data.totalCarts}
+          orderRevenue={data.orderRevenue}
+          cartRevenue={data.cartRevenue}
+          totalCount={data.totalCount}
+          totalRevenue={data.totalRevenue}
+          averageOrderValue={data.averageOrderValue}
+          averageCartValue={data.averageCartValue}
         />
       </div>
 
-      {/* ── KPI filtrés ── */}
-      {filters.selectedDate && (
-        <div>
-          <p className="db-section-label">Résultats du {filters.selectedDate}</p>
-          <StatsCards
-            totalOrders={data.stats.totalOrders}
-            totalRevenue={data.stats.totalRevenue}
-            averageOrderValue={data.stats.averageOrderValue}
-          />
-        </div>
+      {/* ── Graphique ── */}
+      {data.dailyStats.length > 1 && (
+        <SalesChart data={data.dailyStats} />
       )}
 
       {/* ── Tableau par jour ── */}

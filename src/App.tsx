@@ -21,7 +21,7 @@ import CheckoutPage from './components/CheckoutPage';
 import OrderConfirmation from './components/OrderConfirmation';
 import MyOrders from './components/MyOrders';
 import ImportAudit from './components/ImportAudit';
-import DashboardPage from './components/dashboardPage';
+import DashboardPage from './components/DashboardPage';
 import UserSelectPage from './components/UserSelectPage';
 import StockUpdate from './components/StockUpdate';
 import StockEvolution from './components/StockEvolution';

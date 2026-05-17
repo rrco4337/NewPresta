@@ -787,6 +787,7 @@ async function buildCheckoutItems(items: Array<{ reference: string; qty: number;
 
   return result;
 }
+
 export async function importFichier3(
   file: File,
   onProgress?: FichierProgressCallback,
@@ -894,11 +895,47 @@ export async function importFichier3(
         
         await api.post('/order_histories', statusXml);
         
+        // Correction des dates des mouvements de stock
+        for (const item of checkoutItems) {
+          const attributeId = item.attributeId ?? '0';
+          try {
+            // 1. Trouver le stock_available du produit/déclinaison
+            const stockRes = await api.get(
+              `/stock_availables?display=[id]&filter[id_product]=[${item.id}]&filter[id_product_attribute]=[${attributeId}]`
+            );
+            const stockDoc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
+            const stockId = stockDoc.querySelector('stock_available > id')?.textContent?.trim();
+            if (!stockId) continue;
+
+            // 2. Récupérer le mouvement le plus récent pour ce stock (celui que PS vient de créer)
+            const mvtRes = await api.get(
+              `/stock_movements?display=[id]&filter[id_stock]=[${stockId}]&sort=[id_DESC]&limit=1`
+            );
+            const mvtDoc = new DOMParser().parseFromString(mvtRes.data, 'text/xml');
+            const mvtId = mvtDoc.querySelector('stock_mvt > id')?.textContent?.trim();
+            if (!mvtId) continue;
+
+            // 3. GET → remplace date_add → PUT (même pattern commandes/paniers)
+            const getRes = await api.get(`/stock_movements/${mvtId}`);
+            const fixedXml = (getRes.data as string).replace(
+              /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
+              `<date_add><![CDATA[${finalDate}]]></date_add>`
+            );
+            await api.put(`/stock_movements/${mvtId}`, fixedXml);
+            console.log(`✅ Date mouvement auto corrigée ${mvtId} (produit ${item.id}): ${finalDate}`);
+
+          } catch (mvtErr: any) {
+            console.warn(
+              `⚠️ Correction date mouvement auto produit ${item.id}:`,
+              mvtErr?.response?.data ?? mvtErr.message
+            );
+            // Non bloquant
+          }
+        }
+
         finalId = orderId;
         importType = "Commande";
       }
-      
-      // 🔥 NE RIEN FAIRE D'AUTRE - Laisser PrestaShop gérer le stock
       
       results.push({ label: `${label} [${importType}]`, success: true, id: finalId, lineNumber: csvLine });
 

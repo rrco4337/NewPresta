@@ -28,6 +28,7 @@ export interface StockMovement {
   productId: string;
   productName: string;
   combinationLabel: string;
+  combinationId: string | null;
   stockId: string;
   quantityBefore: number;
   quantityAdded: number;
@@ -661,10 +662,8 @@ addMouvementStock: async (
  * Récupère l'historique (snapshot + tentative API PrestaShop)
  * @param productId - ID produit OU reference (ex: M_02)
  */
-
- // Version simplifiée : retourne tous les mouvements bruts
-getMovements: async (productId?: string): Promise<StockMovement[]> => {
-  console.log('[getMovements] === DÉBUT ===');
+getMovements: async (productId: string, combinationId?: string | null): Promise<StockMovement[]> => {
+  console.log('[getMovements] === DÉBUT ===', { productId, combinationId });
 
   try {
     if (!productId) {
@@ -673,129 +672,223 @@ getMovements: async (productId?: string): Promise<StockMovement[]> => {
     }
 
     // ======================================================
-    // 1. STOCK AVAILABLE DU PRODUIT
+    // 1. STOCK AVAILABLE DU PRODUIT (filtré par déclinaison)
     // ======================================================
-    const stockUrl = `/stock_availables?filter[id_product]=${productId}&display=full`;
-    console.log('[getMovements] stock URL:', stockUrl);
-
-    const stockRes = await api.get(stockUrl);
+    const stockRes = await api.get(
+      `/stock_availables?filter[id_product]=[${productId}]&display=full`
+    );
     const stockParsed = parseXML(stockRes.data) as any;
-
-    const stockRoot =
-      stockParsed?.prestashop ||
-      stockParsed?.Prestashop ||
-      stockParsed;
-
-    const stockAvailables = toArray(
+    const stockRoot = stockParsed?.prestashop ?? stockParsed?.Prestashop ?? stockParsed;
+    let stockAvailables = toArray(
       stockRoot?.stock_availables?.stock_available ?? []
     );
 
-    console.log('[getMovements] stockAvailables:', stockAvailables.length);
+    // 🔥 FILTRER PAR DÉCLINAISON si combinationId est fourni
+    const targetAttributeId = (combinationId && combinationId !== '0') ? combinationId : '0';
+    
+    stockAvailables = stockAvailables.filter((s: any) => {
+      const attrId = String(
+        s.id_product_attribute?.['#text'] ?? 
+        s.id_product_attribute ?? 
+        '0'
+      ).trim();
+      return attrId === targetAttributeId;
+    });
 
-    // MAP : id_stock_available => info produit
-    const stockMap = new Map<
-      string,
-      { productId: string; attributeId: string }
-    >();
+    console.log('[getMovements] stockAvailables filtrés:', stockAvailables.length);
 
+    const stockMap = new Map<string, { productId: string; attributeId: string }>();
     stockAvailables.forEach((s: any) => {
+      const idStock = String(
+        s.id_stock_available?.['#text'] ?? 
+        s.id_stock_available ?? 
+        s.id?.['#text'] ?? 
+        s.id ?? 
+        ''
+      ).trim();
       
-const idStock = String(s.id_stock_available ?? s.id ?? '').trim();
-
-if (!idStock || idStock === 'undefined') {
-  console.warn('[stock] idStock invalide', s);
-  return;
-}
-
-stockMap.set(idStock, {
-  productId: String(s.id_product ?? ''),
-  attributeId: String(s.id_product_attribute ?? '0')
-});
+      if (!idStock || idStock === 'undefined') return;
       
+      const prodId = String(
+        s.id_product?.['#text'] ?? 
+        s.id_product ?? 
+        ''
+      ).trim();
+      
+      const attrId = String(
+        s.id_product_attribute?.['#text'] ?? 
+        s.id_product_attribute ?? 
+        '0'
+      ).trim();
+      
+      stockMap.set(idStock, { 
+        productId: prodId, 
+        attributeId: attrId 
+      });
     });
 
     console.log('[getMovements] stockMap size:', stockMap.size);
 
     // ======================================================
-    // 2. MOUVEMENTS STOCK (GLOBAL)
+    // 2. RÉSOLUTION DES LABELS DE DÉCLINAISONS (si nécessaire)
     // ======================================================
-    const url = '/stock_movements?display=full';
-    console.log('[getMovements] movements URL:', url);
+    const combinationLabelMap = new Map<string, string>();
+    combinationLabelMap.set('0', ''); // produit simple
 
-    const res = await api.get(url);
-    const parsed = parseXML(res.data) as any;
+    // Si on a une déclinaison spécifique, on résout son label
+    if (targetAttributeId !== '0') {
+      try {
+        const combRes = await api.get(
+          `/combinations/${targetAttributeId}?display=full`
+        );
+        const combParsed = parseXML(combRes.data) as any;
+        const combRoot = combParsed?.prestashop ?? combParsed?.Prestashop ?? combParsed;
+        const combination = combRoot?.combination;
 
-    const root =
-      parsed?.prestashop ||
-      parsed?.Prestashop ||
-      parsed;
+        if (combination) {
+          const optionValues = toArray(
+            combination.associations?.product_option_values?.product_option_value ?? []
+          );
 
+          const labels: string[] = [];
+          for (const ov of optionValues) {
+            const ovId = String(
+              ov.id?.['#text'] ?? 
+              ov.id ?? 
+              ov['#text'] ?? 
+              ''
+            ).trim();
+            
+            if (!ovId) continue;
+            
+            try {
+              const ovRes = await api.get(`/product_option_values/${ovId}?display=full`);
+              const ovParsed = parseXML(ovRes.data) as any;
+              const ovRoot = ovParsed?.prestashop ?? ovParsed?.Prestashop ?? ovParsed;
+              const ovEl = ovRoot?.product_option_value;
+              
+              let name = '';
+              const langNode = ovEl?.name?.language;
+              if (Array.isArray(langNode)) {
+                name = String(langNode[0]?.['#text'] ?? langNode[0] ?? '');
+              } else if (langNode) {
+                name = String(langNode?.['#text'] ?? langNode ?? '');
+              } else {
+                name = String(ovEl?.name?.['#text'] ?? ovEl?.name ?? '');
+              }
+              
+              if (name.trim()) labels.push(name.trim());
+            } catch {
+              // Non bloquant
+            }
+          }
+
+          combinationLabelMap.set(
+            targetAttributeId, 
+            labels.join(' / ') || `Déclinaison ${targetAttributeId}`
+          );
+          console.log(`[getMovements] combId=${targetAttributeId} → "${combinationLabelMap.get(targetAttributeId)}"`);
+        }
+      } catch (combErr: any) {
+        console.warn('[getMovements] Impossible de résoudre la déclinaison:', combErr.message);
+      }
+    }
+
+    // ======================================================
+    // 3. MOUVEMENTS STOCK
+    // ======================================================
+    const mvtRes = await api.get('/stock_movements?display=full');
+    const parsed = parseXML(mvtRes.data) as any;
+    const root = parsed?.prestashop ?? parsed?.Prestashop ?? parsed;
     const rawMovements = toArray(
-      root?.stock_movements?.stock_mvt ??
-      root?.stock_mvts?.stock_mvt ??
+      root?.stock_movements?.stock_mvt ?? 
+      root?.stock_mvts?.stock_mvt ?? 
       []
     );
-console.log('[DEBUG] stockMap keys:', [...stockMap.keys()]);
-console.log('[DEBUG] sample movement stockIds:', rawMovements.slice(0, 5).map(m => m.id_stock));
-    console.log('[getMovements] rawMovements:', rawMovements.length);
+
+    console.log('[getMovements] rawMovements total:', rawMovements.length);
 
     // ======================================================
-    // 3. TRANSFORMATION + FILTRE PRODUIT
+    // 4. TRANSFORMATION + FILTRE PAR STOCK_ID
     // ======================================================
+    const validStockIds = new Set(stockMap.keys());
+    
     const movements: StockMovement[] = rawMovements
-      .map((mvt: any) => {
+      .map((mvt: any): StockMovement | null => {
+        // Récupération du stockId
         const stockId = String(
-          mvt.id_stock?.['#text'] ?? mvt.id_stock ?? ''
-        );
-
+          mvt.id_stock?.['#text'] ?? 
+          mvt.id_stock ?? 
+          ''
+        ).trim();
+        
+        // Vérifier si ce mouvement appartient au stock ciblé
+        if (!validStockIds.has(stockId)) return null;
+        
         const stockInfo = stockMap.get(stockId);
-
-        if (!stockInfo) return null; // mouvement non lié au produit
+        if (!stockInfo) return null;
 
         const physical = parseInt(
-          mvt.physical_quantity?.['#text'] ??
-          mvt.physical_quantity ?? '0',
-          10
+          mvt.physical_quantity?.['#text'] ?? 
+          mvt.physical_quantity ?? 
+          '0', 10
         );
-
+        
         const sign = parseInt(
-          mvt.sign?.['#text'] ?? mvt.sign ?? '1',
-          10
+          mvt.sign?.['#text'] ?? 
+          mvt.sign ?? 
+          '1', 10
+        );
+        
+        const date = String(
+          mvt.date_add?.['#text'] ?? 
+          mvt.date_add ?? 
+          ''
         );
 
-        const date = mvt.date_add?.['#text'] ?? mvt.date_add ?? '';
+        const resolvedLabel = combinationLabelMap.get(stockInfo.attributeId) ?? 
+                             (stockInfo.attributeId !== '0' ? `Déclinaison ${stockInfo.attributeId}` : '');
+
+        // Récupérer l'ID du mouvement
+        const mvtId = String(
+          mvt.id?.['#text'] ?? 
+          mvt.id ?? 
+          mvt.id_stock_mvt?.['#text'] ?? 
+          mvt.id_stock_mvt ?? 
+          ''
+        );
 
         return {
-          id: String(mvt.id_stock_mvt ?? ''),
-          key: String(mvt.id_stock_mvt ?? ''),
-
+          id: mvtId,
+          key: mvtId,
           productId: stockInfo.productId,
-          combinationLabel: stockInfo.attributeId,
-
-          stockId: stockId,
-
+          productName: '', // Sera rempli par l'appelant si besoin
+          combinationLabel: resolvedLabel,
+          combinationId: stockInfo.attributeId !== '0' ? stockInfo.attributeId : null,
+          stockId,
           quantityAdded: physical * sign,
-
-          quantityBefore: 0,
-          quantityAfter: 0,
-
+          quantityBefore: 0, // À calculer si besoin
+          quantityAfter: 0,  // À calculer si besoin
           date,
-
-          note: sign === 1
-            ? `+${physical}`
-            : `-${physical}`
+          note: sign === 1 ? `+${physical}` : `-${physical}`,
         };
       })
-      .filter(Boolean) as StockMovement[];
+      .filter((m): m is StockMovement => m !== null);
 
-    console.log('[getMovements] FINAL movements:', movements.length);
+    // Trier par date (plus ancien au plus récent pour le calcul du stock)
+    movements.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
+    console.log('[getMovements] FINAL movements pour cette déclinaison:', movements.length);
     return movements;
+
   } catch (err: any) {
     console.error('[getMovements] ERROR:', err.message);
     return [];
   }
 },
+
+ // Version simplifiée : retourne tous les mouvements bruts
+
 // Helper — handles all PS XML field shapes
 
 

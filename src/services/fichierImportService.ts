@@ -61,9 +61,19 @@ function normalizeHeader(value: string): string {
   return value.trim().toLowerCase();
 }
 
+
 function resolveFichier1Columns(header: string[]) {
   const lower = header.map(normalizeHeader);
-  const hasDate = lower.includes('date_produit');
+
+  const DATE_COLUMN_NAMES = [
+    'date_availability_produit',
+    'date_availability_product',
+    'available_date',
+    'date_produit',
+    'date produit',
+  ];
+
+  const hasDate = DATE_COLUMN_NAMES.some((n) => lower.includes(n));
   const fallback = hasDate
     ? { date: 0, nom: 1, reference: 2, prixTtc: 3, taxe: 4, categorie: 5, prixAchat: 6 }
     : { date: -1, nom: 0, reference: 1, prixTtc: 2, taxe: 3, categorie: 4, prixAchat: 5 };
@@ -77,14 +87,47 @@ function resolveFichier1Columns(header: string[]) {
   };
 
   return {
-    dateIdx: findIdx(['date_produit', 'date produit', 'date','date_availability_produit'], fallback.date),
-    nomIdx: findIdx(['nom', 'name'], fallback.nom),
-    referenceIdx: findIdx(['reference', 'référence', 'ref'], fallback.reference),
-    prixTtcIdx: findIdx(['prix_ttc', 'prix ttc', 'price_ttc'], fallback.prixTtc),
-    taxeIdx: findIdx(['taxe', 'taux_tva', 'tva', 'tax'], fallback.taxe),
-    categorieIdx: findIdx(['categorie', 'catégorie', 'category'], fallback.categorie),
-    prixAchatIdx: findIdx(['prix_achat', 'prix achat', 'wholesale_price'], fallback.prixAchat),
+    dateIdx:      findIdx([...DATE_COLUMN_NAMES, 'date'], fallback.date),
+    nomIdx:       findIdx(['nom', 'name'],                                         fallback.nom),
+    referenceIdx: findIdx(['reference', 'référence', 'ref'],                       fallback.reference),
+    prixTtcIdx:   findIdx(['prix_ttc', 'prix ttc', 'price_ttc'],                   fallback.prixTtc),
+    taxeIdx:      findIdx(['taxe', 'taux_tva', 'tva', 'tax'],                      fallback.taxe),
+    categorieIdx: findIdx(['categorie', 'catégorie', 'category'],                  fallback.categorie),
+    prixAchatIdx: findIdx(['prix_achat', 'prix achat', 'wholesale_price'],         fallback.prixAchat),
   };
+}
+
+async function getProductAvailableDateByRef(reference: string): Promise<string | undefined> {
+  // 1. Cache mémoire (rempli par importFichier1 dans la même session)
+  if (productDateCache.has(reference)) {
+    return productDateCache.get(reference)!;
+  }
+
+  // 2. Fallback : lire available_date directement dans PrestaShop
+  try {
+    const res = await api.get(
+      `/products?display=[id,reference,available_date]&filter[reference]=[${reference}]`
+    );
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const raw = doc.querySelector('available_date')?.textContent?.trim() ?? '';
+
+    // PrestaShop stocke '0000-00-00' quand la date n'est pas définie
+    if (raw && raw !== '0000-00-00' && raw !== '0000-00-00 00:00:00') {
+      // Normaliser en 'YYYY-MM-DD HH:MM:SS'
+      const d = parseDateFlexible(raw);
+      if (d) {
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} `
+                  + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+        productDateCache.set(reference, iso); // mise en cache pour les prochains appels
+        console.log(`[getProductAvailableDateByRef] Date lue depuis PS pour ${reference}: ${iso}`);
+        return iso;
+      }
+    }
+  } catch (err) {
+    console.warn(`[getProductAvailableDateByRef] Impossible de lire available_date pour ${reference}`, err);
+  }
+
+  return undefined; // aucune date trouvable → stockService utilisera la date courante
 }
 
 function parseFrenchNumber(s: string): number {
@@ -431,14 +474,15 @@ async function getStockAvailableId(productId: string, combinationId = '0'): Prom
     return doc.querySelector('stock_available > id')?.textContent?.trim() ?? null;
   } catch { return null; }
 }
+
 async function setStock(
-  stockId: string, 
-  productId: string, 
-  combinationId: string, 
+  stockId: string,
+  productId: string,
+  combinationId: string,
   qty: number,
-  movementDate?: string  // 👈 Ajouter paramètre date
+  movementDate?: string,
 ): Promise<void> {
-  // 1. Récupérer la quantité actuelle AVANT modification
+  // 1. Quantité actuelle
   let currentQty = 0;
   try {
     const currentRes = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
@@ -450,7 +494,7 @@ async function setStock(
 
   const delta = qty - currentQty;
 
-  // 2. Mettre à jour le stock
+  // 2. Mise à jour du stock_available
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_available>
@@ -466,15 +510,18 @@ async function setStock(
 </prestashop>`;
   await api.put(`/stock_availables/${stockId}`, xml);
 
-  // 3. Si la quantité a changé, enregistrer un mouvement avec la date fournie
+  // 3. Mouvement de stock avec la date du produit (pas new Date())
   if (delta !== 0) {
+    console.log(
+      `[setStock] Mouvement delta=${delta} pour produit=${productId} combi=${combinationId} date=${movementDate ?? '(courante)'}`
+    );
     await stockService.addMouvementStock(
-      stockId, 
-      productId, 
-      combinationId, 
-      delta, 
+      stockId,
+      productId,
+      combinationId,
+      delta,
       currentQty,
-      movementDate  // 👈 Passer la date
+      movementDate,   // ← date_availability_produit transmise à stockService
     );
   }
 }
@@ -518,11 +565,11 @@ export async function importFichier2(
   file: File,
   onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
-  optionCache = new Map();
+  optionCache      = new Map();
   optionValueCache = new Map();
 
   const lines = parseCsvContent(await file.text());
-  const rows = lines.slice(1)
+  const rows  = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
     .filter(({ row }) => row[0]);
   const results: FichierImportResult[] = [];
@@ -539,24 +586,24 @@ export async function importFichier2(
 
       const qty = parseInt(stock_str ?? '0', 10) || 0;
       const hasVariant = specificite && karazany;
-      
-      // 👈 Récupérer la date depuis le cache (mise en place par fichier1)
-      const movementDate = productDateCache.get(reference);
+
+      // ← CORRIGÉ : cache mémoire EN PREMIER, puis lecture PS si absent
+      const movementDate = await getProductAvailableDateByRef(reference);
       if (movementDate) {
-        console.log(`[Fichier2] Date trouvée pour ${reference}: ${movementDate}`);
+        console.log(`[Fichier2] Date pour mouvement de stock ${reference}: ${movementDate}`);
       } else {
-        console.warn(`[Fichier2] Pas de date trouvée pour ${reference}, utilisation de la date courante`);
+        console.warn(`[Fichier2] Aucune date disponible pour ${reference} — date courante utilisée`);
       }
 
       if (hasVariant) {
-        // Créer la combinaison
-        const taxRate   = taxRateCache.get(reference) ?? 0;
+        // Combinaison
+        const taxRate      = taxRateCache.get(reference) ?? 0;
         const basePriceRes = await api.get(`/products/${productId}?display=[price]`);
-        const baseDoc   = new DOMParser().parseFromString(basePriceRes.data, 'text/xml');
-        const baseHt    = parseFloat(baseDoc.querySelector('price')?.textContent ?? '0');
-        const variantTtc = parseFrenchNumber(prix_ttc_str ?? '0');
-        const variantHt  = variantTtc > 0 ? ttcToHt(variantTtc, taxRate) : baseHt;
-        const priceImpact = (variantHt - baseHt).toFixed(6);
+        const baseDoc      = new DOMParser().parseFromString(basePriceRes.data, 'text/xml');
+        const baseHt       = parseFloat(baseDoc.querySelector('price')?.textContent ?? '0');
+        const variantTtc   = parseFrenchNumber(prix_ttc_str ?? '0');
+        const variantHt    = variantTtc > 0 ? ttcToHt(variantTtc, taxRate) : baseHt;
+        const priceImpact  = (variantHt - baseHt).toFixed(6);
         const combinationRef = buildCombinationReference(reference, karazany);
 
         const optionId = await getOrCreateOption(specificite);
@@ -577,16 +624,14 @@ export async function importFichier2(
     </associations>
   </combination>
 </prestashop>`;
-        const combId = await postXml('/combinations', combXml);
-        
-        // Mettre à jour le stock de la combinaison avec la date
+        const combId  = await postXml('/combinations', combXml);
         const stockId = await getStockAvailableId(productId, combId);
         if (stockId) {
           await setStock(stockId, productId, combId, qty, movementDate);
         }
         results.push({ label, success: true, id: combId, lineNumber: csvLine });
       } else {
-        // Pas de variante : mettre le stock du produit de base avec la date
+        // Produit simple
         const stockId = await getStockAvailableId(productId, '0');
         if (stockId) {
           await setStock(stockId, productId, '0', qty, movementDate);
@@ -594,13 +639,13 @@ export async function importFichier2(
         results.push({ label, success: true, lineNumber: csvLine });
       }
     } catch (err: any) {
-      console.error('Import fichier2 failed', {
+      console.error('Import fichier2 failed', { label, error: err, response: err?.response?.data });
+      results.push({
         label,
-        error: err,
-        response: err?.response?.data,
+        success: false,
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message,
+        lineNumber: csvLine,
       });
-      results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message, lineNumber: csvLine });
     }
     onProgress?.(i + 1, rows.length, label);
   }

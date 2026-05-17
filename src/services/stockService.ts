@@ -589,17 +589,11 @@ addMouvementStock: async (
   combinationId: string,
   quantityAdded: number,
   quantityBefore: number,
-  customDate?: string  // Optional date parameter
+  customDate?: string
 ): Promise<void> => {
-  // Use customDate if provided, otherwise default to current timestamp
-  let dateToUse: string;
-  if (customDate) {
-    // Validate format? The API expects "YYYY-MM-DD HH:MM:SS"
-    dateToUse = customDate;
-  } else {
-    dateToUse = new Date().toISOString().slice(0, 19).replace('T', ' ');
-  }
-  
+  const dateToUse = customDate
+    ?? new Date().toISOString().slice(0, 19).replace('T', ' ');
+
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_mvt>
@@ -612,11 +606,41 @@ addMouvementStock: async (
     <date_add><![CDATA[${dateToUse}]]></date_add>
   </stock_mvt>
 </prestashop>`;
-  
+
   try {
-    await api.post('/stock_movements', xml);
-  } catch (err) {
-    console.warn('[setStock] Impossible d\'enregistrer le mouvement', err);
+    // 1. POST — PrestaShop ignorera date_add et utilisera NOW()
+    const postRes = await api.post('/stock_movements', xml);
+    const postDoc = new DOMParser().parseFromString(postRes.data, 'text/xml');
+    const mvtId = postDoc.querySelector('stock_mvt > id')?.textContent?.trim();
+
+    // 2. Si customDate fourni, forcer la date comme pour les commandes/paniers
+    if (customDate && mvtId) {
+      try {
+        console.log(`[addMouvementStock] Récupération mouvement ${mvtId} pour mise à jour date...`);
+
+        // GET le XML complet du mouvement créé
+        const getRes = await api.get(`/stock_movements/${mvtId}`);
+        let mvtXml = getRes.data as string;
+
+        // Remplacer date_add dans le XML retourné (même pattern que orders/carts)
+        mvtXml = mvtXml.replace(
+          /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
+          `<date_add><![CDATA[${customDate}]]></date_add>`
+        );
+
+        // PUT avec le XML corrigé
+        await api.put(`/stock_movements/${mvtId}`, mvtXml);
+        console.log(`✅ Date mise à jour pour mouvement ${mvtId}: ${customDate}`);
+      } catch (updateErr: any) {
+        console.warn(
+          `⚠️ Impossible de corriger la date du mouvement ${mvtId}:`,
+          updateErr?.response?.data ?? updateErr.message
+        );
+        // Non bloquant — le mouvement existe, seule la date est incorrecte
+      }
+    }
+  } catch (err: any) {
+    console.warn('[addMouvementStock] Impossible d\'enregistrer le mouvement', err);
   }
 },
 

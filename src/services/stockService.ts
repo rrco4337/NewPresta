@@ -633,91 +633,134 @@ addMouvementStock: async (
  // Version simplifiée : retourne tous les mouvements bruts
 getMovements: async (productId?: string): Promise<StockMovement[]> => {
   console.log('[getMovements] === DÉBUT ===');
-  console.log('[getMovements] productId reçu:', productId);
-  
+
   try {
+    if (!productId) {
+      console.warn('[getMovements] productId manquant');
+      return [];
+    }
+
+    // ======================================================
+    // 1. STOCK AVAILABLE DU PRODUIT
+    // ======================================================
+    const stockUrl = `/stock_availables?filter[id_product]=${productId}&display=full`;
+    console.log('[getMovements] stock URL:', stockUrl);
+
+    const stockRes = await api.get(stockUrl);
+    const stockParsed = parseXML(stockRes.data) as any;
+
+    const stockRoot =
+      stockParsed?.prestashop ||
+      stockParsed?.Prestashop ||
+      stockParsed;
+
+    const stockAvailables = toArray(
+      stockRoot?.stock_availables?.stock_available ?? []
+    );
+
+    console.log('[getMovements] stockAvailables:', stockAvailables.length);
+
+    // MAP : id_stock_available => info produit
+    const stockMap = new Map<
+      string,
+      { productId: string; attributeId: string }
+    >();
+
+    stockAvailables.forEach((s: any) => {
+      
+const idStock = String(s.id_stock_available ?? s.id ?? '').trim();
+
+if (!idStock || idStock === 'undefined') {
+  console.warn('[stock] idStock invalide', s);
+  return;
+}
+
+stockMap.set(idStock, {
+  productId: String(s.id_product ?? ''),
+  attributeId: String(s.id_product_attribute ?? '0')
+});
+      
+    });
+
+    console.log('[getMovements] stockMap size:', stockMap.size);
+
+    // ======================================================
+    // 2. MOUVEMENTS STOCK (GLOBAL)
+    // ======================================================
     const url = '/stock_movements?display=full';
-    console.log('[getMovements] 1. URL appelée:', url);
-    
+    console.log('[getMovements] movements URL:', url);
+
     const res = await api.get(url);
-    console.log('[getMovements] 2. Réponse reçue - status:', res.status);
-    
-    console.log('[getMovements] 3. Parse XML...');
     const parsed = parseXML(res.data) as any;
-    console.log('[getMovements] 4. Parse terminé');
-    
-    // 🔍 LOG CRITIQUE: Voir ce que parseXML retourne vraiment
-    console.log('[getMovements] 4b. Type de parsed:', typeof parsed);
-    console.log('[getMovements] 4c. Clés de parsed:', parsed ? Object.keys(parsed) : 'parsed est null/undefined');
-    console.log('[getMovements] 4d. parsed complet (extrait):', JSON.stringify(parsed, null, 2).substring(0, 500));
-    
-    // Essayer différentes structures possibles
-    const possibleRoots = ['prestashop', 'Prestashop', 'root', ''];
-    let root = null;
-    
-    for (const rootName of possibleRoots) {
-      if (rootName && parsed?.[rootName]) {
-        root = parsed[rootName];
-        console.log(`[getMovements] Structure trouvée avec racine: ${rootName}`);
-        break;
-      }
-    }
-    
-    if (!root && parsed && typeof parsed === 'object') {
-      // Si pas de racine nommée, prendre parsed lui-même
-      root = parsed;
-      console.log('[getMovements] Utilisation de parsed comme racine directe');
-    }
-    
-    console.log('[getMovements] 5. root existe?', !!root);
-    
-    if (root) {
-      console.log('[getMovements] 5b. Clés de root:', Object.keys(root));
-      
-      // Chercher stock_mvts ou stock_movements
-      const stockMvts = root?.stock_mvts || root?.stock_movements;
-      console.log('[getMovements] 6. stock_mvts/stock_movements existe?', !!stockMvts);
-      
-      if (stockMvts) {
-        console.log('[getMovements] 6b. Clés de stockMvts:', Object.keys(stockMvts));
-        const rawMovements = toArray(stockMvts?.stock_mvt ?? []);
-        console.log('[getMovements] 7. rawMovements trouvés:', rawMovements.length);
-        
-        if (rawMovements.length > 0) {
-          // Traiter les mouvements
-          const movements = rawMovements.map((mvt: any) => {
-            const id = String(mvt.id?.['#text'] ?? mvt.id ?? '');
-            const id_stock = String(mvt.id_stock?.['#text'] ?? mvt.id_stock ?? '');
-            const physical_quantity = parseInt(mvt.physical_quantity?.['#text'] ?? mvt.physical_quantity ?? '0', 10);
-            const sign = parseInt(mvt.sign?.['#text'] ?? mvt.sign ?? '1', 10);
-            const date_add = mvt.date_add?.['#text'] ?? mvt.date_add ?? '';
-            
-            return {
-              id: id,
-              key: id,
-              productId: 'unknown',
-              productName: 'Produit inconnu',
-              combinationLabel: '',
-              stockId: id_stock,
-              quantityBefore: 0,
-              quantityAdded: physical_quantity * sign,
-              quantityAfter: 0,
-              date: date_add,
-              note: `Mouvement ${sign === 1 ? 'entrée' : 'sortie'} de ${physical_quantity}`
-            };
-          });
-          
-          console.log(`[getMovements] ✅ ${movements.length} mouvements retournés`);
-          return movements;
-        }
-      }
-    }
-    
-    console.warn('[getMovements] Aucun mouvement trouvé');
-    return [];
-    
+
+    const root =
+      parsed?.prestashop ||
+      parsed?.Prestashop ||
+      parsed;
+
+    const rawMovements = toArray(
+      root?.stock_movements?.stock_mvt ??
+      root?.stock_mvts?.stock_mvt ??
+      []
+    );
+console.log('[DEBUG] stockMap keys:', [...stockMap.keys()]);
+console.log('[DEBUG] sample movement stockIds:', rawMovements.slice(0, 5).map(m => m.id_stock));
+    console.log('[getMovements] rawMovements:', rawMovements.length);
+
+    // ======================================================
+    // 3. TRANSFORMATION + FILTRE PRODUIT
+    // ======================================================
+    const movements: StockMovement[] = rawMovements
+      .map((mvt: any) => {
+        const stockId = String(
+          mvt.id_stock?.['#text'] ?? mvt.id_stock ?? ''
+        );
+
+        const stockInfo = stockMap.get(stockId);
+
+        if (!stockInfo) return null; // mouvement non lié au produit
+
+        const physical = parseInt(
+          mvt.physical_quantity?.['#text'] ??
+          mvt.physical_quantity ?? '0',
+          10
+        );
+
+        const sign = parseInt(
+          mvt.sign?.['#text'] ?? mvt.sign ?? '1',
+          10
+        );
+
+        const date = mvt.date_add?.['#text'] ?? mvt.date_add ?? '';
+
+        return {
+          id: String(mvt.id_stock_mvt ?? ''),
+          key: String(mvt.id_stock_mvt ?? ''),
+
+          productId: stockInfo.productId,
+          combinationLabel: stockInfo.attributeId,
+
+          stockId: stockId,
+
+          quantityAdded: physical * sign,
+
+          quantityBefore: 0,
+          quantityAfter: 0,
+
+          date,
+
+          note: sign === 1
+            ? `+${physical}`
+            : `-${physical}`
+        };
+      })
+      .filter(Boolean) as StockMovement[];
+
+    console.log('[getMovements] FINAL movements:', movements.length);
+
+    return movements;
   } catch (err: any) {
-    console.error('[getMovements] ❌ ERREUR:', err.message);
+    console.error('[getMovements] ERROR:', err.message);
     return [];
   }
 },

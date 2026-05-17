@@ -211,16 +211,25 @@ export async function createAddress(data: CreateAddressData): Promise<string> {
 }
 
 // ── Cart ──────────────────────────────────────────────────────────────────────
-
 export async function createPSCart(
   customerId: string,
   addressId: string,
   carrierId: string,
   items: CheckoutItem[],
+  dateAdd?: string,  // Nouveau paramètre optionnel
   secureKey?: string
 ): Promise<string> {
   // Récupérer le secure_key si non fourni
   const key = secureKey || await fetchSecureKey(customerId);
+  
+  // Gérer la date : utiliser dateAdd si fournie, sinon date actuelle
+  let cartDate = dateAdd;
+  if (!cartDate) {
+    cartDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    console.log(`[createPSCart] Aucune date fournie, utilisation de la date courante: ${cartDate}`);
+  } else {
+    console.log(`[createPSCart] Utilisation de la date fournie: ${cartDate}`);
+  }
 
   const rowsXml = items.map(item => `
     <cart_row>
@@ -235,6 +244,7 @@ export async function createPSCart(
     customerId, secureKey: key, addressId, carrierId,
     currencyId: 1, langId: 1, shopId: 1, shopGroupId: 1,
     cartRowsCount: items.length,
+    dateAdd: cartDate
   });
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -249,6 +259,8 @@ export async function createPSCart(
   <id_shop_group><![CDATA[1]]></id_shop_group>
   <id_shop><![CDATA[1]]></id_shop>
   <id_carrier><![CDATA[${carrierId}]]></id_carrier>
+  <date_add><![CDATA[${cartDate}]]></date_add>
+  <date_upd><![CDATA[${cartDate}]]></date_upd>
   <secure_key><![CDATA[${key}]]></secure_key>
   <recyclable><![CDATA[0]]></recyclable>
   <gift><![CDATA[0]]></gift>
@@ -260,12 +272,48 @@ export async function createPSCart(
   </associations>
 </cart>
 </prestashop>`;
+  
+  // 1. Création du panier
   const res = await api.post('/carts', xml);
   const doc = new DOMParser().parseFromString(res.data, 'text/xml');
   const id = doc.querySelector('cart > id')?.textContent?.trim();
   if (!id) throw new Error('Échec de création du panier');
+  
+  // 2. FORCER LA DATE APRÈS CRÉATION (comme pour les commandes)
+  if (dateAdd) {
+    try {
+      console.log(`Récupération panier ${id} pour mise à jour date...`);
+      
+      // Récupérer le XML complet du panier créé
+      const getRes = await api.get(`/carts/${id}`);
+      let cartXml = getRes.data as string;
+      
+      // Remplacer date_add et date_upd dans le XML retourné
+      cartXml = cartXml
+        .replace(
+          /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
+          `<date_add><![CDATA[${dateAdd}]]></date_add>`
+        )
+        .replace(
+          /<date_upd><!\[CDATA\[.*?\]\]><\/date_upd>/,
+          `<date_upd><![CDATA[${dateAdd}]]></date_upd>`
+        );
+      
+      // PUT avec le XML complet modifié
+      await api.put(`/carts/${id}`, cartXml);
+      console.log(`✅ Date mise à jour pour panier ${id}: ${dateAdd}`);
+      
+    } catch (updateError: any) {
+      console.warn(`⚠️ Impossible de corriger la date du panier ${id}:`, 
+        updateError?.response?.data ?? updateError.message);
+      // Non bloquant
+    }
+  }
+  
   return id;
 }
+
+
 export async function createPSOrder(params: {
   customerId: string;
   addressId: string;

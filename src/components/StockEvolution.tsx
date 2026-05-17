@@ -64,7 +64,7 @@ const StockEvolution: React.FC = () => {
     setError(null);
     try {
       // Appel asynchrone vers l'API native PrestaShop
-      const movements = await stockService.getMovements(selectedItem.productId);
+      const movements = await stockService.getMovements(selectedItem.productId, selectedItem.combinationId);
       
       // Transformer les mouvements en données journalières
       const dailyData = transformMovementsToDaily(movements);

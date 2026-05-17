@@ -266,7 +266,7 @@ let productRefCache: Map<string, string> = new Map();
 let optionCache: Map<string, string> = new Map();
 let optionValueCache: Map<string, string> = new Map();
 let taxRateCache: Map<string, number> = new Map(); // reference → taxRate
-
+let productDateCache: Map<string, string> = new Map(); 
 // ==========================================
 // FICHIER 1 — Produits (date_produit,nom,reference,prix_ttc,Taxe,categorie,prix_achat)
 // ==========================================
@@ -316,6 +316,7 @@ export async function importFichier1(
   categoryCache = new Map();
   productRefCache = new Map();
   taxRateCache = new Map();
+  productDateCache = new Map(); // 👈 Ajouter cette ligne
 
   const lines = parseCsvContent(await file.text());
   const header = lines[0] ?? [];
@@ -336,6 +337,7 @@ export async function importFichier1(
     const prix_achat_str = row[cols.prixAchatIdx] ?? '';
     const label = `${nom} (${reference})`;
     onProgress?.(i, rows.length, label);
+    
     try {
       const taxRate  = parseTaxRate(taxe_str ?? '0%');
       const ttc      = parseFrenchNumber(prix_ttc_str ?? '0');
@@ -353,10 +355,18 @@ export async function importFichier1(
       }
       taxRateCache.set(reference, taxRate);
 
+      // Parsing de la date
       const parsedDate = dateValue ? parseDateFlexible(dateValue) : null;
       const dateIso = parsedDate
         ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
         : '';
+      
+      // 👈 STOCKER LA DATE DANS LE CACHE
+      if (reference && dateIso) {
+        productDateCache.set(reference, dateIso);
+        console.log(`[Fichier1] Date stockée pour ${reference}: ${dateIso}`);
+      }
+      
       const dateTag = dateIso ? `<available_date><![CDATA[${dateIso}]]></available_date>` : '';
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -397,7 +407,6 @@ export async function importFichier1(
   }
   return results;
 }
-
 // ==========================================
 // FICHIER 2 — Combinaisons & Stock (reference,specificité,karazany,stock_initial,prix_vente_ttc)
 // ==========================================
@@ -422,8 +431,13 @@ async function getStockAvailableId(productId: string, combinationId = '0'): Prom
     return doc.querySelector('stock_available > id')?.textContent?.trim() ?? null;
   } catch { return null; }
 }
-
-async function setStock(stockId: string, productId: string, combinationId: string, qty: number): Promise<void> {
+async function setStock(
+  stockId: string, 
+  productId: string, 
+  combinationId: string, 
+  qty: number,
+  movementDate?: string  // 👈 Ajouter paramètre date
+): Promise<void> {
   // 1. Récupérer la quantité actuelle AVANT modification
   let currentQty = 0;
   try {
@@ -452,11 +466,19 @@ async function setStock(stockId: string, productId: string, combinationId: strin
 </prestashop>`;
   await api.put(`/stock_availables/${stockId}`, xml);
 
-  // 3. Si la quantité a changé, enregistrer un mouvement
+  // 3. Si la quantité a changé, enregistrer un mouvement avec la date fournie
   if (delta !== 0) {
-    await stockService.addMouvementStock(stockId, productId, combinationId, delta, currentQty);
+    await stockService.addMouvementStock(
+      stockId, 
+      productId, 
+      combinationId, 
+      delta, 
+      currentQty,
+      movementDate  // 👈 Passer la date
+    );
   }
 }
+
 
 async function getOrCreateOption(name: string): Promise<string> {
   const key = name.toLowerCase();
@@ -517,6 +539,14 @@ export async function importFichier2(
 
       const qty = parseInt(stock_str ?? '0', 10) || 0;
       const hasVariant = specificite && karazany;
+      
+      // 👈 Récupérer la date depuis le cache (mise en place par fichier1)
+      const movementDate = productDateCache.get(reference);
+      if (movementDate) {
+        console.log(`[Fichier2] Date trouvée pour ${reference}: ${movementDate}`);
+      } else {
+        console.warn(`[Fichier2] Pas de date trouvée pour ${reference}, utilisation de la date courante`);
+      }
 
       if (hasVariant) {
         // Créer la combinaison
@@ -548,14 +578,19 @@ export async function importFichier2(
   </combination>
 </prestashop>`;
         const combId = await postXml('/combinations', combXml);
-        // Mettre à jour le stock de la combinaison
+        
+        // Mettre à jour le stock de la combinaison avec la date
         const stockId = await getStockAvailableId(productId, combId);
-        if (stockId) await setStock(stockId, productId, combId, qty);
+        if (stockId) {
+          await setStock(stockId, productId, combId, qty, movementDate);
+        }
         results.push({ label, success: true, id: combId, lineNumber: csvLine });
       } else {
-        // Pas de variante : mettre le stock du produit de base
+        // Pas de variante : mettre le stock du produit de base avec la date
         const stockId = await getStockAvailableId(productId, '0');
-        if (stockId) await setStock(stockId, productId, '0', qty);
+        if (stockId) {
+          await setStock(stockId, productId, '0', qty, movementDate);
+        }
         results.push({ label, success: true, lineNumber: csvLine });
       }
     } catch (err: any) {
@@ -571,7 +606,6 @@ export async function importFichier2(
   }
   return results;
 }
-
 // ==========================================
 // FICHIER 3 — Clients & Commandes (date,nom,email,pwd,adresse,achat,etat)
 // ==========================================
@@ -708,7 +742,6 @@ async function buildCheckoutItems(items: Array<{ reference: string; qty: number;
 
   return result;
 }
-
 export async function importFichier3(
   file: File,
   onProgress?: FichierProgressCallback,
@@ -742,49 +775,49 @@ export async function importFichier3(
       const checkoutItems = await buildCheckoutItems(items);
       if (checkoutItems.length === 0) throw new Error('Aucun produit valide');
 
-      // 3. CRÉATION DU PANIER
-      const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems);
+      // 3. PRÉPARATION DE LA DATE (commune pour panier et commande)
+      let cartDate = null;
+      
+      if (date && date.trim()) {
+        // Support de plusieurs formats
+        let day, month, year;
+        
+        // Essayer DD/MM/YYYY
+        if (date.includes('/')) {
+          [day, month, year] = date.split('/');
+        } 
+        // Essayer DD-MM-YYYY
+        else if (date.includes('-')) {
+          [day, month, year] = date.split('-');
+        }
+        // Essayer YYYY-MM-DD (déjà formaté)
+        else if (date.includes('-') && date[4] === '-') {
+          [year, month, day] = date.split('-');
+        }
+        
+        if (day && month && year) {
+          // Nettoyer les valeurs
+          day = day.padStart(2, '0');
+          month = month.padStart(2, '0');
+          year = year.padStart(4, '20');
+          
+          cartDate = `${year}-${month}-${day} 00:00:00`;
+          console.log(`Date formatée: ${cartDate}`);
+        }
+      }
+      
+      // Date par défaut (fallback) si indisponible
+      const finalDate = cartDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
+      console.log(`Date utilisée pour le panier/commande: ${finalDate}`);
+
+      // 4. CRÉATION DU PANIER AVEC LA DATE
+      const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems, finalDate);
       
       let finalId = cartId;
       let importType = "Panier";
 
-      // 4. TRANSFORMATION EN COMMANDE
+      // 5. TRANSFORMATION EN COMMANDE
       if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
-        // Conversion ROBUSTE de la date
-        let orderDate = null;
-        
-        if (date && date.trim()) {
-          // Support de plusieurs formats
-          let day, month, year;
-          
-          // Essayer DD/MM/YYYY
-          if (date.includes('/')) {
-            [day, month, year] = date.split('/');
-          } 
-          // Essayer DD-MM-YYYY
-          else if (date.includes('-')) {
-            [day, month, year] = date.split('-');
-          }
-          // Essayer YYYY-MM-DD (déjà formaté)
-          else if (date.includes('-') && date[4] === '-') {
-            [year, month, day] = date.split('-');
-          }
-          
-          if (day && month && year) {
-            // Nettoyer les valeurs
-            day = day.padStart(2, '0');
-            month = month.padStart(2, '0');
-            year = year.padStart(4, '20');
-            
-            orderDate = `${year}-${month}-${day} 00:00:00`;
-            console.log(`Date formatée: ${orderDate}`);
-          }
-        }
-        
-        // Date par défaut
-        const finalOrderDate = orderDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
-        console.log(`Date utilisée pour la commande: ${finalOrderDate}`);
-
         const orderId = await createPSOrder({
           customerId: customer.id,
           addressId,
@@ -792,10 +825,10 @@ export async function importFichier3(
           carrierId: '1',
           items: checkoutItems,
           shippingCost: 0,
-          dateAdd: finalOrderDate,
+          dateAdd: finalDate,
         });
 
-        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalOrderDate}`);
+        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalDate}`);
 
         // Appliquer le statut
         const psState = (etat === STATUS_MAP.PAID) 
@@ -808,7 +841,7 @@ export async function importFichier3(
               <id_order><![CDATA[${orderId}]]></id_order>
               <id_order_state><![CDATA[${psState}]]></id_order_state>
               <id_employee><![CDATA[1]]></id_employee>
-              <date_add><![CDATA[${finalOrderDate}]]></date_add>
+              <date_add><![CDATA[${finalDate}]]></date_add>
             </order_history>
           </prestashop>`;
         

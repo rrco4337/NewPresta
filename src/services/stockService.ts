@@ -588,9 +588,18 @@ addMouvementStock: async (
   productId: string,
   combinationId: string,
   quantityAdded: number,
-  quantityBefore: number
+  quantityBefore: number,
+  customDate?: string  // Optional date parameter
 ): Promise<void> => {
-  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  // Use customDate if provided, otherwise default to current timestamp
+  let dateToUse: string;
+  if (customDate) {
+    // Validate format? The API expects "YYYY-MM-DD HH:MM:SS"
+    dateToUse = customDate;
+  } else {
+    dateToUse = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  }
+  
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_mvt>
@@ -600,7 +609,7 @@ addMouvementStock: async (
     <physical_quantity><![CDATA[${Math.abs(quantityAdded)}]]></physical_quantity>
     <sign><![CDATA[${quantityAdded > 0 ? 1 : -1}]]></sign>
     <price_te><![CDATA[0]]></price_te>
-    <date_add><![CDATA[${now}]]></date_add>
+    <date_add><![CDATA[${dateToUse}]]></date_add>
   </stock_mvt>
 </prestashop>`;
   
@@ -610,7 +619,6 @@ addMouvementStock: async (
     console.warn('[setStock] Impossible d\'enregistrer le mouvement', err);
   }
 },
-
 
   /** Récupère l'historique des mouvements, filtrables par produit */
   /**

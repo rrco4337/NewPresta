@@ -61,9 +61,19 @@ function normalizeHeader(value: string): string {
   return value.trim().toLowerCase();
 }
 
+
 function resolveFichier1Columns(header: string[]) {
   const lower = header.map(normalizeHeader);
-  const hasDate = lower.includes('date_produit');
+
+  const DATE_COLUMN_NAMES = [
+    'date_availability_produit',
+    'date_availability_product',
+    'available_date',
+    'date_produit',
+    'date produit',
+  ];
+
+  const hasDate = DATE_COLUMN_NAMES.some((n) => lower.includes(n));
   const fallback = hasDate
     ? { date: 0, nom: 1, reference: 2, prixTtc: 3, taxe: 4, categorie: 5, prixAchat: 6 }
     : { date: -1, nom: 0, reference: 1, prixTtc: 2, taxe: 3, categorie: 4, prixAchat: 5 };
@@ -77,14 +87,47 @@ function resolveFichier1Columns(header: string[]) {
   };
 
   return {
-    dateIdx: findIdx(['date_produit', 'date produit', 'date','date_availability_produit'], fallback.date),
-    nomIdx: findIdx(['nom', 'name'], fallback.nom),
-    referenceIdx: findIdx(['reference', 'référence', 'ref'], fallback.reference),
-    prixTtcIdx: findIdx(['prix_ttc', 'prix ttc', 'price_ttc'], fallback.prixTtc),
-    taxeIdx: findIdx(['taxe', 'taux_tva', 'tva', 'tax'], fallback.taxe),
-    categorieIdx: findIdx(['categorie', 'catégorie', 'category'], fallback.categorie),
-    prixAchatIdx: findIdx(['prix_achat', 'prix achat', 'wholesale_price'], fallback.prixAchat),
+    dateIdx:      findIdx([...DATE_COLUMN_NAMES, 'date'], fallback.date),
+    nomIdx:       findIdx(['nom', 'name'],                                         fallback.nom),
+    referenceIdx: findIdx(['reference', 'référence', 'ref'],                       fallback.reference),
+    prixTtcIdx:   findIdx(['prix_ttc', 'prix ttc', 'price_ttc'],                   fallback.prixTtc),
+    taxeIdx:      findIdx(['taxe', 'taux_tva', 'tva', 'tax'],                      fallback.taxe),
+    categorieIdx: findIdx(['categorie', 'catégorie', 'category'],                  fallback.categorie),
+    prixAchatIdx: findIdx(['prix_achat', 'prix achat', 'wholesale_price'],         fallback.prixAchat),
   };
+}
+
+async function getProductAvailableDateByRef(reference: string): Promise<string | undefined> {
+  // 1. Cache mémoire (rempli par importFichier1 dans la même session)
+  if (productDateCache.has(reference)) {
+    return productDateCache.get(reference)!;
+  }
+
+  // 2. Fallback : lire available_date directement dans PrestaShop
+  try {
+    const res = await api.get(
+      `/products?display=[id,reference,available_date]&filter[reference]=[${reference}]`
+    );
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const raw = doc.querySelector('available_date')?.textContent?.trim() ?? '';
+
+    // PrestaShop stocke '0000-00-00' quand la date n'est pas définie
+    if (raw && raw !== '0000-00-00' && raw !== '0000-00-00 00:00:00') {
+      // Normaliser en 'YYYY-MM-DD HH:MM:SS'
+      const d = parseDateFlexible(raw);
+      if (d) {
+        const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} `
+                  + `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+        productDateCache.set(reference, iso); // mise en cache pour les prochains appels
+        console.log(`[getProductAvailableDateByRef] Date lue depuis PS pour ${reference}: ${iso}`);
+        return iso;
+      }
+    }
+  } catch (err) {
+    console.warn(`[getProductAvailableDateByRef] Impossible de lire available_date pour ${reference}`, err);
+  }
+
+  return undefined; // aucune date trouvable → stockService utilisera la date courante
 }
 
 function parseFrenchNumber(s: string): number {
@@ -266,7 +309,7 @@ let productRefCache: Map<string, string> = new Map();
 let optionCache: Map<string, string> = new Map();
 let optionValueCache: Map<string, string> = new Map();
 let taxRateCache: Map<string, number> = new Map(); // reference → taxRate
-
+let productDateCache: Map<string, string> = new Map(); 
 // ==========================================
 // FICHIER 1 — Produits (date_produit,nom,reference,prix_ttc,Taxe,categorie,prix_achat)
 // ==========================================
@@ -316,6 +359,7 @@ export async function importFichier1(
   categoryCache = new Map();
   productRefCache = new Map();
   taxRateCache = new Map();
+  productDateCache = new Map(); // 👈 Ajouter cette ligne
 
   const lines = parseCsvContent(await file.text());
   const header = lines[0] ?? [];
@@ -336,6 +380,7 @@ export async function importFichier1(
     const prix_achat_str = row[cols.prixAchatIdx] ?? '';
     const label = `${nom} (${reference})`;
     onProgress?.(i, rows.length, label);
+    
     try {
       const taxRate  = parseTaxRate(taxe_str ?? '0%');
       const ttc      = parseFrenchNumber(prix_ttc_str ?? '0');
@@ -353,10 +398,18 @@ export async function importFichier1(
       }
       taxRateCache.set(reference, taxRate);
 
+      // Parsing de la date
       const parsedDate = dateValue ? parseDateFlexible(dateValue) : null;
       const dateIso = parsedDate
         ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
         : '';
+      
+      // 👈 STOCKER LA DATE DANS LE CACHE
+      if (reference && dateIso) {
+        productDateCache.set(reference, dateIso);
+        console.log(`[Fichier1] Date stockée pour ${reference}: ${dateIso}`);
+      }
+      
       const dateTag = dateIso ? `<available_date><![CDATA[${dateIso}]]></available_date>` : '';
 
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -397,7 +450,6 @@ export async function importFichier1(
   }
   return results;
 }
-
 // ==========================================
 // FICHIER 2 — Combinaisons & Stock (reference,specificité,karazany,stock_initial,prix_vente_ttc)
 // ==========================================
@@ -423,8 +475,14 @@ async function getStockAvailableId(productId: string, combinationId = '0'): Prom
   } catch { return null; }
 }
 
-async function setStock(stockId: string, productId: string, combinationId: string, qty: number): Promise<void> {
-  // 1. Récupérer la quantité actuelle AVANT modification
+async function setStock(
+  stockId: string,
+  productId: string,
+  combinationId: string,
+  qty: number,
+  movementDate?: string,
+): Promise<void> {
+  // 1. Quantité actuelle
   let currentQty = 0;
   try {
     const currentRes = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
@@ -436,7 +494,7 @@ async function setStock(stockId: string, productId: string, combinationId: strin
 
   const delta = qty - currentQty;
 
-  // 2. Mettre à jour le stock
+  // 2. Mise à jour du stock_available
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_available>
@@ -452,11 +510,22 @@ async function setStock(stockId: string, productId: string, combinationId: strin
 </prestashop>`;
   await api.put(`/stock_availables/${stockId}`, xml);
 
-  // 3. Si la quantité a changé, enregistrer un mouvement
+  // 3. Mouvement de stock avec la date du produit (pas new Date())
   if (delta !== 0) {
-    await stockService.addMouvementStock(stockId, productId, combinationId, delta, currentQty);
+    console.log(
+      `[setStock] Mouvement delta=${delta} pour produit=${productId} combi=${combinationId} date=${movementDate ?? '(courante)'}`
+    );
+    await stockService.addMouvementStock(
+      stockId,
+      productId,
+      combinationId,
+      delta,
+      currentQty,
+      movementDate,   // ← date_availability_produit transmise à stockService
+    );
   }
 }
+
 
 async function getOrCreateOption(name: string): Promise<string> {
   const key = name.toLowerCase();
@@ -496,11 +565,11 @@ export async function importFichier2(
   file: File,
   onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
-  optionCache = new Map();
+  optionCache      = new Map();
   optionValueCache = new Map();
 
   const lines = parseCsvContent(await file.text());
-  const rows = lines.slice(1)
+  const rows  = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
     .filter(({ row }) => row[0]);
   const results: FichierImportResult[] = [];
@@ -518,15 +587,23 @@ export async function importFichier2(
       const qty = parseInt(stock_str ?? '0', 10) || 0;
       const hasVariant = specificite && karazany;
 
+      // ← CORRIGÉ : cache mémoire EN PREMIER, puis lecture PS si absent
+      const movementDate = await getProductAvailableDateByRef(reference);
+      if (movementDate) {
+        console.log(`[Fichier2] Date pour mouvement de stock ${reference}: ${movementDate}`);
+      } else {
+        console.warn(`[Fichier2] Aucune date disponible pour ${reference} — date courante utilisée`);
+      }
+
       if (hasVariant) {
-        // Créer la combinaison
-        const taxRate   = taxRateCache.get(reference) ?? 0;
+        // Combinaison
+        const taxRate      = taxRateCache.get(reference) ?? 0;
         const basePriceRes = await api.get(`/products/${productId}?display=[price]`);
-        const baseDoc   = new DOMParser().parseFromString(basePriceRes.data, 'text/xml');
-        const baseHt    = parseFloat(baseDoc.querySelector('price')?.textContent ?? '0');
-        const variantTtc = parseFrenchNumber(prix_ttc_str ?? '0');
-        const variantHt  = variantTtc > 0 ? ttcToHt(variantTtc, taxRate) : baseHt;
-        const priceImpact = (variantHt - baseHt).toFixed(6);
+        const baseDoc      = new DOMParser().parseFromString(basePriceRes.data, 'text/xml');
+        const baseHt       = parseFloat(baseDoc.querySelector('price')?.textContent ?? '0');
+        const variantTtc   = parseFrenchNumber(prix_ttc_str ?? '0');
+        const variantHt    = variantTtc > 0 ? ttcToHt(variantTtc, taxRate) : baseHt;
+        const priceImpact  = (variantHt - baseHt).toFixed(6);
         const combinationRef = buildCombinationReference(reference, karazany);
 
         const optionId = await getOrCreateOption(specificite);
@@ -547,31 +624,33 @@ export async function importFichier2(
     </associations>
   </combination>
 </prestashop>`;
-        const combId = await postXml('/combinations', combXml);
-        // Mettre à jour le stock de la combinaison
+        const combId  = await postXml('/combinations', combXml);
         const stockId = await getStockAvailableId(productId, combId);
-        if (stockId) await setStock(stockId, productId, combId, qty);
+        if (stockId) {
+          await setStock(stockId, productId, combId, qty, movementDate);
+        }
         results.push({ label, success: true, id: combId, lineNumber: csvLine });
       } else {
-        // Pas de variante : mettre le stock du produit de base
+        // Produit simple
         const stockId = await getStockAvailableId(productId, '0');
-        if (stockId) await setStock(stockId, productId, '0', qty);
+        if (stockId) {
+          await setStock(stockId, productId, '0', qty, movementDate);
+        }
         results.push({ label, success: true, lineNumber: csvLine });
       }
     } catch (err: any) {
-      console.error('Import fichier2 failed', {
+      console.error('Import fichier2 failed', { label, error: err, response: err?.response?.data });
+      results.push({
         label,
-        error: err,
-        response: err?.response?.data,
+        success: false,
+        error: err.response?.data ? extractXmlError(err.response.data) : err.message,
+        lineNumber: csvLine,
       });
-      results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message, lineNumber: csvLine });
     }
     onProgress?.(i + 1, rows.length, label);
   }
   return results;
 }
-
 // ==========================================
 // FICHIER 3 — Clients & Commandes (date,nom,email,pwd,adresse,achat,etat)
 // ==========================================
@@ -742,49 +821,49 @@ export async function importFichier3(
       const checkoutItems = await buildCheckoutItems(items);
       if (checkoutItems.length === 0) throw new Error('Aucun produit valide');
 
-      // 3. CRÉATION DU PANIER
-      const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems);
+      // 3. PRÉPARATION DE LA DATE (commune pour panier et commande)
+      let cartDate = null;
+      
+      if (date && date.trim()) {
+        // Support de plusieurs formats
+        let day, month, year;
+        
+        // Essayer DD/MM/YYYY
+        if (date.includes('/')) {
+          [day, month, year] = date.split('/');
+        } 
+        // Essayer DD-MM-YYYY
+        else if (date.includes('-')) {
+          [day, month, year] = date.split('-');
+        }
+        // Essayer YYYY-MM-DD (déjà formaté)
+        else if (date.includes('-') && date[4] === '-') {
+          [year, month, day] = date.split('-');
+        }
+        
+        if (day && month && year) {
+          // Nettoyer les valeurs
+          day = day.padStart(2, '0');
+          month = month.padStart(2, '0');
+          year = year.padStart(4, '20');
+          
+          cartDate = `${year}-${month}-${day} 00:00:00`;
+          console.log(`Date formatée: ${cartDate}`);
+        }
+      }
+      
+      // Date par défaut (fallback) si indisponible
+      const finalDate = cartDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
+      console.log(`Date utilisée pour le panier/commande: ${finalDate}`);
+
+      // 4. CRÉATION DU PANIER AVEC LA DATE
+      const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems, finalDate);
       
       let finalId = cartId;
       let importType = "Panier";
 
-      // 4. TRANSFORMATION EN COMMANDE
+      // 5. TRANSFORMATION EN COMMANDE
       if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
-        // Conversion ROBUSTE de la date
-        let orderDate = null;
-        
-        if (date && date.trim()) {
-          // Support de plusieurs formats
-          let day, month, year;
-          
-          // Essayer DD/MM/YYYY
-          if (date.includes('/')) {
-            [day, month, year] = date.split('/');
-          } 
-          // Essayer DD-MM-YYYY
-          else if (date.includes('-')) {
-            [day, month, year] = date.split('-');
-          }
-          // Essayer YYYY-MM-DD (déjà formaté)
-          else if (date.includes('-') && date[4] === '-') {
-            [year, month, day] = date.split('-');
-          }
-          
-          if (day && month && year) {
-            // Nettoyer les valeurs
-            day = day.padStart(2, '0');
-            month = month.padStart(2, '0');
-            year = year.padStart(4, '20');
-            
-            orderDate = `${year}-${month}-${day} 00:00:00`;
-            console.log(`Date formatée: ${orderDate}`);
-          }
-        }
-        
-        // Date par défaut
-        const finalOrderDate = orderDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
-        console.log(`Date utilisée pour la commande: ${finalOrderDate}`);
-
         const orderId = await createPSOrder({
           customerId: customer.id,
           addressId,
@@ -792,10 +871,10 @@ export async function importFichier3(
           carrierId: '1',
           items: checkoutItems,
           shippingCost: 0,
-          dateAdd: finalOrderDate,
+          dateAdd: finalDate,
         });
 
-        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalOrderDate}`);
+        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalDate}`);
 
         // Appliquer le statut
         const psState = (etat === STATUS_MAP.PAID) 
@@ -808,7 +887,7 @@ export async function importFichier3(
               <id_order><![CDATA[${orderId}]]></id_order>
               <id_order_state><![CDATA[${psState}]]></id_order_state>
               <id_employee><![CDATA[1]]></id_employee>
-              <date_add><![CDATA[${finalOrderDate}]]></date_add>
+              <date_add><![CDATA[${finalDate}]]></date_add>
             </order_history>
           </prestashop>`;
         
@@ -816,11 +895,47 @@ export async function importFichier3(
         
         await api.post('/order_histories', statusXml);
         
+        // Correction des dates des mouvements de stock
+        for (const item of checkoutItems) {
+          const attributeId = item.attributeId ?? '0';
+          try {
+            // 1. Trouver le stock_available du produit/déclinaison
+            const stockRes = await api.get(
+              `/stock_availables?display=[id]&filter[id_product]=[${item.id}]&filter[id_product_attribute]=[${attributeId}]`
+            );
+            const stockDoc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
+            const stockId = stockDoc.querySelector('stock_available > id')?.textContent?.trim();
+            if (!stockId) continue;
+
+            // 2. Récupérer le mouvement le plus récent pour ce stock (celui que PS vient de créer)
+            const mvtRes = await api.get(
+              `/stock_movements?display=[id]&filter[id_stock]=[${stockId}]&sort=[id_DESC]&limit=1`
+            );
+            const mvtDoc = new DOMParser().parseFromString(mvtRes.data, 'text/xml');
+            const mvtId = mvtDoc.querySelector('stock_mvt > id')?.textContent?.trim();
+            if (!mvtId) continue;
+
+            // 3. GET → remplace date_add → PUT (même pattern commandes/paniers)
+            const getRes = await api.get(`/stock_movements/${mvtId}`);
+            const fixedXml = (getRes.data as string).replace(
+              /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
+              `<date_add><![CDATA[${finalDate}]]></date_add>`
+            );
+            await api.put(`/stock_movements/${mvtId}`, fixedXml);
+            console.log(`✅ Date mouvement auto corrigée ${mvtId} (produit ${item.id}): ${finalDate}`);
+
+          } catch (mvtErr: any) {
+            console.warn(
+              `⚠️ Correction date mouvement auto produit ${item.id}:`,
+              mvtErr?.response?.data ?? mvtErr.message
+            );
+            // Non bloquant
+          }
+        }
+
         finalId = orderId;
         importType = "Commande";
       }
-      
-      // 🔥 NE RIEN FAIRE D'AUTRE - Laisser PrestaShop gérer le stock
       
       results.push({ label: `${label} [${importType}]`, success: true, id: finalId, lineNumber: csvLine });
 

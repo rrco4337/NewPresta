@@ -33,6 +33,7 @@ export interface PSOrder {
   cartRows?: CartRow[];
 }
 
+
 // 📦 Les 4 statuts selon les spécifications J2 (avec LIVRÉ)
 export const PS_STATE_LABELS: Record<number, string> = {
   1:  '📦 Dans le panier',      // État panier (cart non validé)
@@ -162,44 +163,93 @@ export async function fetchPSOrders(): Promise<PSOrder[]> {
 // Cache pour éviter de re-fetcher le même produit plusieurs fois
 const productPriceCache = new Map<string, number>();
 const combinationPriceCache = new Map<string, number>();
+const taxRateCache = new Map<string, number>();
 
-async function fetchProductPrice(productId: string): Promise<number> {
-  if (productPriceCache.has(productId)) {
-    return productPriceCache.get(productId)!;
-  }
+async function fetchTaxRate(taxRulesGroupId: string): Promise<number> {
+  if (!taxRulesGroupId || taxRulesGroupId === '0') return 0;
+  if (taxRateCache.has(taxRulesGroupId)) return taxRateCache.get(taxRulesGroupId)!;
 
   try {
-    const res = await api.get(`/products/${productId}?display=full`);
+    // 1️⃣ Trouver l'id_tax lié à ce groupe
+    const rulesRes = await api.get(
+      `/tax_rules?filter[id_tax_rules_group]=[${taxRulesGroupId}]&display=[id_tax]`
+    );
+    const rulesDoc = new DOMParser().parseFromString(rulesRes.data, 'text/xml');
+    const taxId = rulesDoc.querySelector('id_tax')?.textContent?.trim();
+
+    if (!taxId || taxId === '0') { taxRateCache.set(taxRulesGroupId, 0); return 0; }
+
+    // 2️⃣ Lire le taux depuis /taxes/:id
+    const taxRes = await api.get(`/taxes/${taxId}?display=[rate]`);
+    const taxDoc = new DOMParser().parseFromString(taxRes.data, 'text/xml');
+    const rate   = parseFloat(taxDoc.querySelector('rate')?.textContent?.trim() ?? '0');
+
+    taxRateCache.set(taxRulesGroupId, rate);
+    return rate;
+  } catch {
+    taxRateCache.set(taxRulesGroupId, 0);
+    return 0;
+  }
+}
+
+/**
+ * Retourne le prix TTC d'un produit.
+ * L'API PS ne fournit pas price_tax_incl → on calcule : HT × (1 + TVA/100).
+ */
+async function fetchProductPrice(productId: string): Promise<number> {
+  if (productPriceCache.has(productId)) return productPriceCache.get(productId)!;
+
+  try {
+    const res = await api.get(`/products/${productId}?display=[price,id_tax_rules_group]`);
     const doc = new DOMParser().parseFromString(res.data, 'text/xml');
 
-    // PrestaShop expose price HT + price_ttc selon la config.
-    // Préfère price_ttc, sinon price (HT).
-    const priceTtc = doc.querySelector('price_tax_incl')?.textContent?.trim();
-    const priceHt  = doc.querySelector('price')?.textContent?.trim();
+    const priceHt    = parseFloat(doc.querySelector('price')?.textContent?.trim() ?? '0');
+    const taxGroupId = doc.querySelector('id_tax_rules_group')?.textContent?.trim() ?? '0';
+    const taxRate    = await fetchTaxRate(taxGroupId);
+    const priceTtc   = priceHt * (1 + taxRate / 100);
 
-    const price = parseFloat(priceTtc ?? priceHt ?? '0') || 0;
-    productPriceCache.set(productId, price);
-    return price;
+    console.log(`Produit ${productId} — HT: ${priceHt}, TVA: ${taxRate}%, TTC: ${priceTtc}`);
+
+    productPriceCache.set(productId, priceTtc);
+    return priceTtc;
   } catch {
     console.warn(`Impossible de récupérer le prix du produit ${productId}`);
     return 0;
   }
 }
 
-async function fetchCombinationPriceImpact(comboId: string): Promise<number> {
-  if (combinationPriceCache.has(comboId)) {
-    return combinationPriceCache.get(comboId)!;
-  }
+/**
+ * Retourne l'impact TTC d'une déclinaison.
+ * L'impact dans /combinations est en HT → même conversion via TVA du produit parent.
+ */
+async function fetchCombinationPriceImpact(comboId: string, productId?: string): Promise<number> {
+  if (combinationPriceCache.has(comboId)) return combinationPriceCache.get(comboId)!;
+
   try {
-    const res = await api.get(`/combinations/${comboId}?display=[price]`);
+    const res = await api.get(`/combinations/${comboId}?display=[price,id_product]`);
     const doc = new DOMParser().parseFromString(res.data, 'text/xml');
-    const impact = parseFloat(doc.querySelector('price')?.textContent ?? '0') || 0;
-    combinationPriceCache.set(comboId, impact);
-    return impact;
+
+    const impactHt = parseFloat(doc.querySelector('price')?.textContent?.trim() ?? '0');
+    const pid      = productId ?? doc.querySelector('id_product')?.textContent?.trim() ?? '0';
+
+    let taxRate = 0;
+    if (pid && pid !== '0') {
+      const pRes = await api.get(`/products/${pid}?display=[id_tax_rules_group]`);
+      const pDoc = new DOMParser().parseFromString(pRes.data, 'text/xml');
+      const taxGroupId = pDoc.querySelector('id_tax_rules_group')?.textContent?.trim() ?? '0';
+      taxRate = await fetchTaxRate(taxGroupId);
+    }
+
+    const impactTtc = impactHt * (1 + taxRate / 100);
+    console.log(`Combinaison ${comboId} — Impact HT: ${impactHt}, TVA: ${taxRate}%, TTC: ${impactTtc}`);
+
+    combinationPriceCache.set(comboId, impactTtc);
+    return impactTtc;
   } catch {
     return 0;
   }
 }
+
 
 async function parseCartsXml(
   xmlString: string
@@ -237,7 +287,9 @@ async function parseCartsXml(
         cartRows.map(async (row) => {
           if (!row.productId || row.quantity === 0) return 0;
           const basePrice   = await fetchProductPrice(row.productId);
-          const priceImpact = row.combinationId !== '0' ? await fetchCombinationPriceImpact(row.combinationId) : 0;
+          const priceImpact = row.combinationId !== '0'
+          ? await fetchCombinationPriceImpact(row.combinationId, row.productId)
+          : 0;
           return (basePrice + priceImpact) * row.quantity;
         })
       );

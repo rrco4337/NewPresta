@@ -301,40 +301,99 @@ export interface FichierImportResult {
 export type FichierProgressCallback = (done: number, total: number, label: string) => void;
 
 // ==========================================
-// CACHES GLOBAUX (réinitialisés à chaque import)
+let categoryCache: Map<string, string>          = new Map();
+let categoryPending: Map<string, Promise<string>> = new Map(); // anti-doublon concurrent
+let categoryLoadPromise: Promise<void> | null    = null;        // chargement initial unique
+ 
+let productRefCache: Map<string, string>           = new Map();
+let optionCache: Map<string, string>               = new Map();
+let optionPending: Map<string, Promise<string>>    = new Map();
+let optionValueCache: Map<string, string>          = new Map();
+let optionValuePending: Map<string, Promise<string>> = new Map();
+let taxRateCache: Map<string, number>              = new Map();
+let productDateCache: Map<string, string>          = new Map();
+
 // ==========================================
 
-let categoryCache: Map<string, string> = new Map();
-let productRefCache: Map<string, string> = new Map();
-let optionCache: Map<string, string> = new Map();
-let optionValueCache: Map<string, string> = new Map();
-let taxRateCache: Map<string, number> = new Map(); // reference → taxRate
-let productDateCache: Map<string, string> = new Map(); 
+
 // ==========================================
 // FICHIER 1 — Produits (date_produit,nom,reference,prix_ttc,Taxe,categorie,prix_achat)
 // ==========================================
+async function runConcurrent<T>(
+  items: T[],
+  fn: (item: T, index: number) => Promise<void>,
+  concurrency = 5,
+): Promise<void> {
+  if (items.length === 0) return;
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (next < items.length) {
+        const idx = next++;
+        await fn(items[idx], idx);
+      }
+    },
+  );
+  await Promise.all(workers);
+}
+async function preloadProductRefs(references: string[]): Promise<void> {
+  const unique = [...new Set(references)].filter(Boolean);
+  if (unique.length === 0) return;
+ 
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += 50)
+    chunks.push(unique.slice(i, i + 50));
+ 
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        const filter = chunk.map((r) => `[${r}]`).join('|');
+        const res = await api.get(
+          `/products?display=[id,reference]&filter[reference]=${filter}`,
+        );
+        const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+        doc.querySelectorAll('product').forEach((p) => {
+          const id  = p.querySelector('id')?.textContent?.trim();
+          const ref = p.querySelector('reference')?.textContent?.trim();
+          if (id && ref) productRefCache.set(ref, id);
+        });
+      } catch (err) {
+        console.warn('[preloadProductRefs] Erreur chunk', err);
+      }
+    }),
+  );
+}
 
-async function findOrCreateCategory(name: string): Promise<string> {
-  if (categoryCache.has(name)) return categoryCache.get(name)!;
-
-  // Chargement de toutes les catégories au premier appel
-  if (categoryCache.size === 0) {
+async function loadAllCategories(): Promise<void> {
+  if (categoryLoadPromise) return categoryLoadPromise;
+  categoryLoadPromise = (async () => {
     try {
       const res = await api.get('/categories?display=full');
       const doc = new DOMParser().parseFromString(res.data, 'text/xml');
       doc.querySelectorAll('category').forEach((c) => {
-        const id   = c.querySelector(':scope > id')?.textContent?.trim();
+        const id  = c.querySelector(':scope > id')?.textContent?.trim();
         const nameEl = c.querySelector('name language');
-        const n    = nameEl?.textContent?.trim() ?? c.querySelector('name')?.textContent?.trim();
+        const n   = nameEl?.textContent?.trim() ?? c.querySelector('name')?.textContent?.trim();
         if (id && n) categoryCache.set(n, id);
       });
     } catch { /* ignore */ }
-  }
+  })();
+  return categoryLoadPromise;
+}
 
+async function findOrCreateCategory(name: string): Promise<string> {
   if (categoryCache.has(name)) return categoryCache.get(name)!;
-
-  // Créer la catégorie
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+ 
+  // Chargement initial (une seule fois, même si appelé en concurrence)
+  await loadAllCategories();
+  if (categoryCache.has(name)) return categoryCache.get(name)!;
+ 
+  // Déduplication : si une autre coroutine crée déjà cette catégorie, on attend
+  if (categoryPending.has(name)) return categoryPending.get(name)!;
+ 
+  const promise = (async () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <category>
     <active><![CDATA[1]]></active>
@@ -347,76 +406,119 @@ async function findOrCreateCategory(name: string): Promise<string> {
     <meta_description><language id="1"><![CDATA[]]></language></meta_description>
   </category>
 </prestashop>`;
-  const id = await postXml('/categories', xml);
-  categoryCache.set(name, id);
-  return id;
+    const id = await postXml('/categories', xml);
+    categoryCache.set(name, id);
+    categoryPending.delete(name);
+    return id;
+  })();
+ 
+  categoryPending.set(name, promise);
+  return promise;
+}
+ 
+async function getOrCreateOption(name: string): Promise<string> {
+  const key = name.toLowerCase();
+  if (optionCache.has(key)) return optionCache.get(key)!;
+  if (optionPending.has(key)) return optionPending.get(key)!;
+ 
+  const promise = (async () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <product_option>
+    <name><language id="1"><![CDATA[${name}]]></language></name>
+   <public_name><language id="1"><![CDATA[${name}]]></language></public_name>
+    <group_type><![CDATA[select]]></group_type>
+    <is_color_group><![CDATA[0]]></is_color_group>
+    <position><![CDATA[0]]></position>
+  </product_option>
+</prestashop>`;
+    const id = await postXml('/product_options', xml);
+    optionCache.set(key, id);
+    optionPending.delete(key);
+    return id;
+  })();
+ 
+  optionPending.set(key, promise);
+  return promise;
+}
+async function getOrCreateOptionValue(optionId: string, valueName: string): Promise<string> {
+  const key = `${optionId}:${valueName.toLowerCase()}`;
+  if (optionValueCache.has(key)) return optionValueCache.get(key)!;
+  if (optionValuePending.has(key)) return optionValuePending.get(key)!;
+ 
+  const promise = (async () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <product_option_value>
+    <id_attribute_group><![CDATA[${optionId}]]></id_attribute_group>
+    <name><language id="1"><![CDATA[${valueName}]]></language></name>
+    <position><![CDATA[0]]></position>
+  </product_option_value>
+</prestashop>`;
+    const id = await postXml('/product_option_values', xml);
+    optionValueCache.set(key, id);
+    optionValuePending.delete(key);
+    return id;
+  })();
+ 
+  optionValuePending.set(key, promise);
+  return promise;
 }
 
-export async function importFichier1(
-  file: File,
-  onProgress?: FichierProgressCallback,
+async function importFichier1(
+  rows: any[],
+  cols: any,
+  onProgress?: (current: number, total: number, label: string) => void
 ): Promise<FichierImportResult[]> {
-  categoryCache = new Map();
-  productRefCache = new Map();
-  taxRateCache = new Map();
-  productDateCache = new Map(); // 👈 Ajouter cette ligne
+  // Tableau pré-alloué pour conserver l'ordre CSV malgré la concurrence
+  const results: FichierImportResult[] = new Array(rows.length);
+  let done = 0;
 
-  const lines = parseCsvContent(await file.text());
-  const header = lines[0] ?? [];
-  const cols = resolveFichier1Columns(header);
-  const rows = lines.slice(1)
-    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
-    .filter(({ row }) => (row[cols.nomIdx] ?? '').trim() !== '');
-  const results: FichierImportResult[] = [];
+  await runConcurrent(
+    rows,
+    async ({ row, csvLine }, i) => {
+      const nom = row[cols.nomIdx] ?? '';
+      const reference = row[cols.referenceIdx] ?? '';
+      const dateValue = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
+      const prix_ttc_str = row[cols.prixTtcIdx] ?? '';
+      const taxe_str = row[cols.taxeIdx] ?? '';
+      const categorie = row[cols.categorieIdx] ?? '';
+      const prix_achat_str = row[cols.prixAchatIdx] ?? '';
+      const label = `${nom} (${reference})`;
 
-  for (let i = 0; i < rows.length; i++) {
-    const { row, csvLine } = rows[i];
-    const nom = row[cols.nomIdx] ?? '';
-    const reference = row[cols.referenceIdx] ?? '';
-    const dateValue = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
-    const prix_ttc_str = row[cols.prixTtcIdx] ?? '';
-    const taxe_str = row[cols.taxeIdx] ?? '';
-    const categorie = row[cols.categorieIdx] ?? '';
-    const prix_achat_str = row[cols.prixAchatIdx] ?? '';
-    const label = `${nom} (${reference})`;
-    onProgress?.(i, rows.length, label);
-    
-    try {
-      const taxRate  = parseTaxRate(taxe_str ?? '0%');
-      const ttc      = parseFrenchNumber(prix_ttc_str ?? '0');
-      const ht       = ttcToHt(ttc, taxRate);
-      const wholesalePrice = parseFrenchNumber(prix_achat_str ?? '0');
-      const catId    = await findOrCreateCategory(categorie ?? 'Général');
-      let taxGroupId: number = 0;
-      if (taxRate > 0) {
-        const resolved = await ensureTaxRulesGroupIdByRate(taxRate);
-        if (resolved == null) {
-          console.error('Tax group not found for rate', {
-            label,
-            rate: taxRate,
-            taxLabel: taxe_str,
-          });
-          throw new Error(`Aucun groupe de taxe pour le taux ${taxe_str}`);
+      onProgress?.(done, rows.length, label);
+
+      try {
+        const taxRate = parseTaxRate(taxe_str ?? '0%');
+        const ttc = parseFrenchNumber(prix_ttc_str ?? '0');
+        const ht = ttcToHt(ttc, taxRate);
+        const wholesalePrice = parseFrenchNumber(prix_achat_str ?? '0');
+
+        // findOrCreateCategory et ensureTaxRulesGroupIdByRate sont déjà sécurisés
+        // contre les appels concurrents (pending map + chargement unique)
+        const catId = await findOrCreateCategory(categorie ?? 'Général');
+        const taxGroupId = await ensureTaxRulesGroupIdByRate(taxRate);
+
+        if (!taxGroupId) {
+          throw new Error(`Aucun groupe de taxe pour le taux ${taxe_str ?? '0%'}`);
         }
-        taxGroupId = resolved;
-      }
-      taxRateCache.set(reference, taxRate);
 
-      // Parsing de la date
-      const parsedDate = dateValue ? parseDateFlexible(dateValue) : null;
-      const dateIso = parsedDate
-        ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
-        : '';
-      
-      // 👈 STOCKER LA DATE DANS LE CACHE
-      if (reference && dateIso) {
-        productDateCache.set(reference, dateIso);
-        console.log(`[Fichier1] Date stockée pour ${reference}: ${dateIso}`);
-      }
-      
-      const dateTag = dateIso ? `<available_date><![CDATA[${dateIso}]]></available_date>` : '';
+        taxRateCache.set(reference, taxRate);
 
-      const xml = `<?xml version="1.0" encoding="UTF-8"?>
+        // Parsing de la date
+        const parsedDate = dateValue ? parseDateFlexible(dateValue) : null;
+        const dateIso = parsedDate
+          ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
+          : '';
+
+        if (reference && dateIso) {
+          productDateCache.set(reference, dateIso);
+          console.log(`[Fichier1] Date stockée pour ${reference}: ${dateIso}`);
+        }
+
+        const dateTag = dateIso ? `<available_date><![CDATA[${dateIso}]]></available_date>` : '';
+
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <product>
     <active><![CDATA[1]]></active>
@@ -438,20 +540,25 @@ export async function importFichier1(
     </associations>
   </product>
 </prestashop>`;
-      const id = await postXml('/products', xml);
-      productRefCache.set(reference, id);
-      results.push({ label, success: true, id, lineNumber: csvLine });
-    } catch (err: any) {
-      console.error('Import fichier1 failed', {
-        label,
-        error: err,
-        response: err?.response?.data,
-      });
-      results.push({ label, success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message, lineNumber: csvLine });
-    }
-    onProgress?.(i + 1, rows.length, label);
-  }
+
+        const id = await postXml('/products', xml);
+        productRefCache.set(reference, id);
+        results[i] = { label, success: true, id, lineNumber: csvLine };
+      } catch (err: any) {
+        console.error('Import fichier1 failed', { label, error: err, response: err?.response?.data });
+        results[i] = {
+          label,
+          success: false,
+          error: err.response?.data ? extractXmlError(err.response.data) : err.message,
+          lineNumber: csvLine,
+        };
+      }
+
+      onProgress?.(++done, rows.length, label);
+    },
+    5 // concurrence ×5
+  );
+
   return results;
 }
 // ==========================================
@@ -479,26 +586,31 @@ async function getStockAvailableId(productId: string, combinationId = '0'): Prom
   } catch { return null; }
 }
 
+
 async function setStock(
   stockId: string,
   productId: string,
   combinationId: string,
   qty: number,
   movementDate?: string,
+  currentQtyHint?: number, // ← passer 0 pour un import initial, évite le GET
 ): Promise<void> {
-  // 1. Quantité actuelle
   let currentQty = 0;
-  try {
-    const currentRes = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
-    const currentDoc = new DOMParser().parseFromString(currentRes.data, 'text/xml');
-    currentQty = parseInt(currentDoc.querySelector('quantity')?.textContent ?? '0', 10);
-  } catch (err) {
-    console.warn('[setStock] Impossible de lire la quantité actuelle', err);
+ 
+  if (currentQtyHint !== undefined) {
+    currentQty = currentQtyHint;
+  } else {
+    try {
+      const res = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
+      const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+      currentQty = parseInt(doc.querySelector('quantity')?.textContent ?? '0', 10);
+    } catch (err) {
+      console.warn('[setStock] Impossible de lire la quantité actuelle', err);
+    }
   }
-
+ 
   const delta = qty - currentQty;
-
-  // 2. Mise à jour du stock_available
+ 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_available>
@@ -513,11 +625,10 @@ async function setStock(
   </stock_available>
 </prestashop>`;
   await api.put(`/stock_availables/${stockId}`, xml);
-
-  // 3. Mouvement de stock avec la date du produit (pas new Date())
+ 
   if (delta !== 0) {
     console.log(
-      `[setStock] Mouvement delta=${delta} pour produit=${productId} combi=${combinationId} date=${movementDate ?? '(courante)'}`
+      `[setStock] Mouvement delta=${delta} produit=${productId} combi=${combinationId} date=${movementDate ?? '(courante)'}`,
     );
     await stockService.addMouvementStock(
       stockId,
@@ -525,95 +636,70 @@ async function setStock(
       combinationId,
       delta,
       currentQty,
-      movementDate,   // ← date_availability_produit transmise à stockService
+      movementDate,
     );
   }
 }
 
 
-async function getOrCreateOption(name: string): Promise<string> {
-  const key = name.toLowerCase();
-  if (optionCache.has(key)) return optionCache.get(key)!;
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <product_option>
-    <name><language id="1"><![CDATA[${name}]]></language></name>
-    <public_name><language id="1"><![CDATA[${name}]]></language></public_name>
-    <group_type><![CDATA[select]]></group_type>
-    <is_color_group><![CDATA[0]]></is_color_group>
-    <position><![CDATA[0]]></position>
-  </product_option>
-</prestashop>`;
-  const id = await postXml('/product_options', xml);
-  optionCache.set(key, id);
-  return id;
-}
-
-async function getOrCreateOptionValue(optionId: string, valueName: string): Promise<string> {
-  const key = `${optionId}:${valueName.toLowerCase()}`;
-  if (optionValueCache.has(key)) return optionValueCache.get(key)!;
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <product_option_value>
-    <id_attribute_group><![CDATA[${optionId}]]></id_attribute_group>
-    <name><language id="1"><![CDATA[${valueName}]]></language></name>
-    <position><![CDATA[0]]></position>
-  </product_option_value>
-</prestashop>`;
-  const id = await postXml('/product_option_values', xml);
-  optionValueCache.set(key, id);
-  return id;
-}
-
 export async function importFichier2(
   file: File,
   onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
-  optionCache      = new Map();
-  optionValueCache = new Map();
-
+  optionCache        = new Map();
+  optionPending      = new Map();
+  optionValueCache   = new Map();
+  optionValuePending = new Map();
+ 
   const lines = parseCsvContent(await file.text());
   const rows  = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
     .filter(({ row }) => row[0]);
-  const results: FichierImportResult[] = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const { row, csvLine } = rows[i];
-    const [reference, specificite, karazany, stock_str, prix_ttc_str] = row;
-    const label = `${reference}${karazany ? ' — ' + karazany : ''}`;
-    onProgress?.(i, rows.length, label);
-
-    try {
-      const productId = await getProductIdByRef(reference);
-      if (!productId) throw new Error(`Produit "${reference}" introuvable`);
-
-      const qty = parseInt(stock_str ?? '0', 10) || 0;
-      const hasVariant = specificite && karazany;
-
-      // ← CORRIGÉ : cache mémoire EN PREMIER, puis lecture PS si absent
-      const movementDate = await getProductAvailableDateByRef(reference);
-      if (movementDate) {
-        console.log(`[Fichier2] Date pour mouvement de stock ${reference}: ${movementDate}`);
-      } else {
-        console.warn(`[Fichier2] Aucune date disponible pour ${reference} — date courante utilisée`);
-      }
-
-      if (hasVariant) {
-        // Combinaison
-        const taxRate      = taxRateCache.get(reference) ?? 0;
-        const basePriceRes = await api.get(`/products/${productId}?display=[price]`);
-        const baseDoc      = new DOMParser().parseFromString(basePriceRes.data, 'text/xml');
-        const baseHt       = parseFloat(baseDoc.querySelector('price')?.textContent ?? '0');
-        const variantTtc   = parseFrenchNumber(prix_ttc_str ?? '0');
-        const variantHt    = variantTtc > 0 ? ttcToHt(variantTtc, taxRate) : baseHt;
-        const priceImpact  = (variantHt - baseHt).toFixed(6);
-        const combinationRef = buildCombinationReference(reference, karazany);
-
-        const optionId = await getOrCreateOption(specificite);
-        const valId    = await getOrCreateOptionValue(optionId, karazany);
-
-        const combXml = `<?xml version="1.0" encoding="UTF-8"?>
+ 
+  // ── Pré-chargement : 1 appel groupé au lieu de 1 appel par ligne ──
+  const allRefs = rows.map(({ row }) => (row[0] ?? '').trim()).filter(Boolean);
+  await preloadProductRefs(allRefs);
+  // ──────────────────────────────────────────────────────────────────
+ 
+  const results: FichierImportResult[] = new Array(rows.length);
+  let done = 0;
+ 
+  await runConcurrent(
+    rows,
+    async ({ row, csvLine }, i) => {
+      const [reference, specificite, karazany, stock_str, prix_ttc_str] = row;
+      const label = `${reference}${karazany ? ' — ' + karazany : ''}`;
+ 
+      onProgress?.(done, rows.length, label);
+ 
+      try {
+        const productId = await getProductIdByRef(reference);
+        if (!productId) throw new Error(`Produit "${reference}" introuvable`);
+ 
+        const qty        = parseInt(stock_str ?? '0', 10) || 0;
+        const hasVariant = specificite && karazany;
+ 
+        const movementDate = await getProductAvailableDateByRef(reference);
+        if (!movementDate) {
+          console.warn(`[Fichier2] Aucune date pour ${reference} — date courante utilisée`);
+        }
+ 
+        if (hasVariant) {
+          // ── Combinaison ──
+          const taxRate      = taxRateCache.get(reference) ?? 0;
+          const basePriceRes = await api.get(`/products/${productId}?display=[price]`);
+          const baseDoc      = new DOMParser().parseFromString(basePriceRes.data, 'text/xml');
+          const baseHt       = parseFloat(baseDoc.querySelector('price')?.textContent ?? '0');
+          const variantTtc   = parseFrenchNumber(prix_ttc_str ?? '0');
+          const variantHt    = variantTtc > 0 ? ttcToHt(variantTtc, taxRate) : baseHt;
+          const priceImpact  = (variantHt - baseHt).toFixed(6);
+          const combinationRef = buildCombinationReference(reference, karazany);
+ 
+          // getOrCreateOption / Value sont sécurisés contre les appels concurrents
+          const optionId = await getOrCreateOption(specificite);
+          const valId    = await getOrCreateOptionValue(optionId, karazany);
+ 
+          const combXml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <combination>
     <id_product><![CDATA[${productId}]]></id_product>
@@ -628,37 +714,60 @@ export async function importFichier2(
     </associations>
   </combination>
 </prestashop>`;
-        const combId  = await postXml('/combinations', combXml);
-        const stockId = await getStockAvailableId(productId, combId);
-        if (stockId) {
-          await setStock(stockId, productId, combId, qty, movementDate);
+ 
+          const combId  = await postXml('/combinations', combXml);
+          const stockId = await getStockAvailableId(productId, combId);
+          if (stockId) {
+            // currentQtyHint=0 : nouveau produit, pas besoin de relire le stock
+            await setStock(stockId, productId, combId, qty, movementDate, 0);
+          }
+          results[i] = { label, success: true, id: combId, lineNumber: csvLine };
+        } else {
+          // ── Produit simple ──
+          const stockId = await getStockAvailableId(productId, '0');
+          if (stockId) {
+            await setStock(stockId, productId, '0', qty, movementDate, 0);
+          }
+          results[i] = { label, success: true, lineNumber: csvLine };
         }
-        results.push({ label, success: true, id: combId, lineNumber: csvLine });
-      } else {
-        // Produit simple
-        const stockId = await getStockAvailableId(productId, '0');
-        if (stockId) {
-          await setStock(stockId, productId, '0', qty, movementDate);
-        }
-        results.push({ label, success: true, lineNumber: csvLine });
+      } catch (err: any) {
+        console.error('Import fichier2 failed', { label, error: err, response: err?.response?.data });
+        results[i] = {
+          label,
+          success: false,
+          error: err.response?.data ? extractXmlError(err.response.data) : err.message,
+          lineNumber: csvLine,
+        };
       }
-    } catch (err: any) {
-      console.error('Import fichier2 failed', { label, error: err, response: err?.response?.data });
-      results.push({
-        label,
-        success: false,
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message,
-        lineNumber: csvLine,
-      });
-    }
-    onProgress?.(i + 1, rows.length, label);
-  }
+ 
+      onProgress?.(++done, rows.length, label);
+    },
+    5, // concurrence ×5
+  );
+ 
   return results;
 }
 // ==========================================
 // FICHIER 3 — Clients & Commandes (date,nom,email,pwd,adresse,achat,etat)
 // ==========================================
-
+let customerPending: Map<string, Promise<ImportCustomer | null>> = new Map();
+async function resolveCustomerConcurrent(
+  nom: string,
+  email: string,
+  pwd: string,
+): Promise<ImportCustomer | null> {
+  // Si deux lignes ont le même email, on évite de créer le client deux fois
+  if (customerPending.has(email)) return customerPending.get(email)!;
+ 
+  const promise = resolveCustomer(nom, email, pwd).then((c) => {
+    customerPending.delete(email);
+    return c;
+  });
+ 
+  customerPending.set(email, promise);
+  return promise;
+}
+ 
 function parseAchat(raw: string): Array<{ reference: string; qty: number; variant: string }> {
   // raw après parse CSV: [("T_01";3;"ngoza")] ou [("T_01";2;"kely"),("M_03";1;"")]
   const cleaned = raw.trim();
@@ -792,169 +901,148 @@ async function buildCheckoutItems(items: Array<{ reference: string; qty: number;
   return result;
 }
 
+ 
 export async function importFichier3(
   file: File,
   onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
+  customerPending = new Map();
+ 
   const lines = parseCsvContent(await file.text());
-  const rows = lines.slice(1)
+  const rows  = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
     .filter(({ row }) => row[1]);
-  const results: FichierImportResult[] = [];
-
-  for (let i = 0; i < rows.length; i++) {
-    const { row, csvLine } = rows[i];
-    const [date, nom, email, pwd, adresse, achat, etatRaw] = row;
-    const label = `${nom} (${email})`;
-    const etat = (etatRaw || '').toLowerCase().trim();
-    
-    console.log(`Traitement ligne ${csvLine}:`, { date, nom, email, etat });
-    
-    onProgress?.(i, rows.length, label);
-
-    try {
-      // 1. Gestion Client & Adresse
-      const customer = await resolveCustomer(nom, email, pwd);
-      if (!customer) throw new Error(`Client impossible à créer/trouver`);
-
-      const addressId = await ensureAddressForCustomer(customer, adresse ?? '');
-      if (!addressId) throw new Error(`Erreur création adresse`);
-
-      // 2. Préparation des items
-      const items = parseAchat(achat ?? '');
-      const checkoutItems = await buildCheckoutItems(items);
-      if (checkoutItems.length === 0) throw new Error('Aucun produit valide');
-
-      // 3. PRÉPARATION DE LA DATE (commune pour panier et commande)
-      let cartDate = null;
-      
-      if (date && date.trim()) {
-        // Support de plusieurs formats
-        let day, month, year;
-        
-        // Essayer DD/MM/YYYY
-        if (date.includes('/')) {
-          [day, month, year] = date.split('/');
-        } 
-        // Essayer DD-MM-YYYY
-        else if (date.includes('-')) {
-          [day, month, year] = date.split('-');
+ 
+  const results: FichierImportResult[] = new Array(rows.length);
+  let done = 0;
+ 
+  await runConcurrent(
+    rows,
+    async ({ row, csvLine }, i) => {
+      const [date, nom, email, pwd, adresse, achat, etatRaw] = row;
+      const label = `${nom} (${email})`;
+      const etat  = (etatRaw || '').toLowerCase().trim();
+ 
+      console.log(`Traitement ligne ${csvLine}:`, { date, nom, email, etat });
+      onProgress?.(done, rows.length, label);
+ 
+      try {
+        // 1. Client & Adresse
+        const customer = await resolveCustomerConcurrent(nom, email, pwd);
+        if (!customer) throw new Error('Client impossible à créer/trouver');
+ 
+        const addressId = await ensureAddressForCustomer(customer, adresse ?? '');
+        if (!addressId) throw new Error('Erreur création adresse');
+ 
+        // 2. Items
+        const items         = parseAchat(achat ?? '');
+        const checkoutItems = await buildCheckoutItems(items);
+        if (checkoutItems.length === 0) throw new Error('Aucun produit valide');
+ 
+        // 3. Date de la commande/panier
+        const finalDate = parseFinalDate(date);
+ 
+        // 4. Panier
+        const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems, finalDate);
+ 
+        let finalId    = cartId;
+        let importType = 'Panier';
+ 
+        // 5. Commande si statut le demande
+        if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
+          const orderId = await createPSOrder({
+            customerId: customer.id,
+            addressId,
+            cartId,
+            carrierId:    '1',
+            items:        checkoutItems,
+            shippingCost: 0,
+            dateAdd:      finalDate,
+          });
+ 
+          console.log(`Commande créée ID: ${orderId}, Date: ${finalDate}`);
+ 
+          const psState = etat === STATUS_MAP.PAID
+            ? PS_STATE_PAYMENT_ACCEPTED
+            : PS_STATE_CANCELED;
+ 
+          const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <order_history>
+    <id_order><![CDATA[${orderId}]]></id_order>
+    <id_order_state><![CDATA[${psState}]]></id_order_state>
+    <id_employee><![CDATA[1]]></id_employee>
+    <date_add><![CDATA[${finalDate}]]></date_add>
+  </order_history>
+</prestashop>`;
+ 
+          await api.post('/order_histories', statusXml);
+ 
+          // NOTE : la correction des dates des mouvements de stock auto (3 appels API
+          // supplémentaires par produit) a été supprimée — elle représentait ~1 200 appels
+          // pour 200 commandes × 3 produits. Si cette correction est critique, envisager
+          // un script de patch différé (ex. job nocturne sur stock_movements).
+ 
+          finalId    = orderId;
+          importType = 'Commande';
         }
-        // Essayer YYYY-MM-DD (déjà formaté)
-        else if (date.includes('-') && date[4] === '-') {
-          [year, month, day] = date.split('-');
-        }
-        
-        if (day && month && year) {
-          // Nettoyer les valeurs
-          day = day.padStart(2, '0');
-          month = month.padStart(2, '0');
-          year = year.padStart(4, '20');
-          
-          cartDate = `${year}-${month}-${day} 00:00:00`;
-          console.log(`Date formatée: ${cartDate}`);
-        }
+ 
+        results[i] = {
+          label:      `${label} [${importType}]`,
+          success:    true,
+          id:         finalId,
+          lineNumber: csvLine,
+        };
+      } catch (err: any) {
+        console.error(`Erreur pour ${label}:`, err);
+        results[i] = {
+          label,
+          success: false,
+          error:      err.response?.data ? extractXmlError(err.response.data) : err.message,
+          lineNumber: csvLine,
+        };
       }
-      
-      // Date par défaut (fallback) si indisponible
-      const finalDate = cartDate || new Date().toISOString().slice(0, 19).replace('T', ' ');
-      console.log(`Date utilisée pour le panier/commande: ${finalDate}`);
-
-      // 4. CRÉATION DU PANIER AVEC LA DATE
-      const cartId = await createPSCart(customer.id, addressId, '1', checkoutItems, finalDate);
-      
-      let finalId = cartId;
-      let importType = "Panier";
-
-      // 5. TRANSFORMATION EN COMMANDE
-      if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
-        const orderId = await createPSOrder({
-          customerId: customer.id,
-          addressId,
-          cartId,
-          carrierId: '1',
-          items: checkoutItems,
-          shippingCost: 0,
-          dateAdd: finalDate,
-        });
-
-        console.log(`Commande créée avec l'ID: ${orderId}, Date: ${finalDate}`);
-
-        // Appliquer le statut
-        const psState = (etat === STATUS_MAP.PAID) 
-          ? PS_STATE_PAYMENT_ACCEPTED 
-          : PS_STATE_CANCELED;
-
-        const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
-          <prestashop>
-            <order_history>
-              <id_order><![CDATA[${orderId}]]></id_order>
-              <id_order_state><![CDATA[${psState}]]></id_order_state>
-              <id_employee><![CDATA[1]]></id_employee>
-              <date_add><![CDATA[${finalDate}]]></date_add>
-            </order_history>
-          </prestashop>`;
-        
-        console.log(`XML historique: ${statusXml}`);
-        
-        await api.post('/order_histories', statusXml);
-        
-        // Correction des dates des mouvements de stock
-        for (const item of checkoutItems) {
-          const attributeId = item.attributeId ?? '0';
-          try {
-            // 1. Trouver le stock_available du produit/déclinaison
-            const stockRes = await api.get(
-              `/stock_availables?display=[id]&filter[id_product]=[${item.id}]&filter[id_product_attribute]=[${attributeId}]`
-            );
-            const stockDoc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
-            const stockId = stockDoc.querySelector('stock_available > id')?.textContent?.trim();
-            if (!stockId) continue;
-
-            // 2. Récupérer le mouvement le plus récent pour ce stock (celui que PS vient de créer)
-            const mvtRes = await api.get(
-              `/stock_movements?display=[id]&filter[id_stock]=[${stockId}]&sort=[id_DESC]&limit=1`
-            );
-            const mvtDoc = new DOMParser().parseFromString(mvtRes.data, 'text/xml');
-            const mvtId = mvtDoc.querySelector('stock_mvt > id')?.textContent?.trim();
-            if (!mvtId) continue;
-
-            // 3. GET → remplace date_add → PUT (même pattern commandes/paniers)
-            const getRes = await api.get(`/stock_movements/${mvtId}`);
-            const fixedXml = (getRes.data as string).replace(
-              /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
-              `<date_add><![CDATA[${finalDate}]]></date_add>`
-            );
-            await api.put(`/stock_movements/${mvtId}`, fixedXml);
-            console.log(`✅ Date mouvement auto corrigée ${mvtId} (produit ${item.id}): ${finalDate}`);
-
-          } catch (mvtErr: any) {
-            console.warn(
-              `⚠️ Correction date mouvement auto produit ${item.id}:`,
-              mvtErr?.response?.data ?? mvtErr.message
-            );
-            // Non bloquant
-          }
-        }
-
-        finalId = orderId;
-        importType = "Commande";
-      }
-      
-      results.push({ label: `${label} [${importType}]`, success: true, id: finalId, lineNumber: csvLine });
-
-    } catch (err: any) {
-      console.error(`Erreur pour ${label}:`, err);
-      results.push({ 
-        label, 
-        success: false, 
-        error: err.response?.data ? extractXmlError(err.response.data) : err.message,
-        lineNumber: csvLine 
-      });
-    }
-    onProgress?.(i + 1, rows.length, label);
-  }
+ 
+      onProgress?.(++done, rows.length, label);
+    },
+    3, // concurrence ×3 (chaque ligne = ~15 appels API)
+  );
+ 
   return results;
+}
+
+function parseFinalDate(date: string | undefined): string {
+  if (!date?.trim()) {
+    return new Date().toISOString().slice(0, 19).replace('T', ' ');
+  }
+ 
+  let day: string | undefined;
+  let month: string | undefined;
+  let year: string | undefined;
+ 
+  if (date.includes('/')) {
+    [day, month, year] = date.split('/');
+  } else if (date.includes('-')) {
+    // YYYY-MM-DD ou DD-MM-YYYY
+    const parts = date.split('-');
+    if (parts[0].length === 4) {
+      [year, month, day] = parts;
+    } else {
+      [day, month, year] = parts;
+    }
+  }
+ 
+  if (day && month && year) {
+    return `${year.padStart(4, '20')}-${month.padStart(2, '0')}-${day.padStart(2, '0')} 00:00:00`;
+  }
+ 
+  // Fallback parseDateFlexible
+  const parsed = parseDateFlexible(date);
+  if (parsed) {
+    return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')} 00:00:00`;
+  }
+ 
+  return new Date().toISOString().slice(0, 19).replace('T', ' ');
 }
 
 // Fonction pour restaurer le stock

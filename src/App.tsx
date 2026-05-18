@@ -25,7 +25,7 @@ import DashboardPage from './components/dashboardPage';
 import UserSelectPage from './components/UserSelectPage';
 import StockUpdate from './components/StockUpdate';
 import StockEvolution from './components/StockEvolution';
-
+import FinancialAnalytics from './pages/FinancialAnalytics';
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
   if (pathname === '/products') return 'Produits';
@@ -63,7 +63,7 @@ function App() {
 
             {/* ── Route publique login ── */}
             <Route path="/login" element={<Login />} />
-
+            <Route path="/analytics" element={<FinancialAnalytics />} />
             {/* ── FrontOffice (public, sans sidebar) ── */}
             <Route
               path="/shop"

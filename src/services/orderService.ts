@@ -406,3 +406,65 @@ export async function fetchOrderRows(orderId: string): Promise<CartRow[]> {
     return [];
   }
 }
+
+  // ==========================================
+// LIGNES DES COMMANDES PAYÉES (POUR FINANCIAL)
+// ==========================================
+
+/**
+ * Récupère toutes les lignes des commandes ayant le statut "Paiement effectué" (state 2)
+ * avec le prix unitaire TTC.
+ * @returns tableau d'objets { productId, quantity, unit_price_tax_incl }
+ */
+export async function fetchPaidOrderRows(): Promise<{ productId: number; quantity: number; unit_price_tax_incl: number }[]> {
+  const allOrders = await fetchPSOrders();
+  const paidOrders = allOrders.filter(order => order.currentState === 2);
+  const rows: { productId: number; quantity: number; unit_price_tax_incl: number }[] = [];
+
+  for (const order of paidOrders) {
+    const orderRows = await fetchOrderRows(order.id);
+    for (const row of orderRows) {
+      const unitPrice = await fetchOrderRowUnitPrice(order.id, row.productId);
+      rows.push({
+        productId: parseInt(row.productId),
+        quantity: row.quantity,
+        unit_price_tax_incl: unitPrice,
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * Récupère le prix unitaire TTC d'un produit dans une commande spécifique
+ */
+async function fetchOrderRowUnitPrice(orderId: string, productId: string): Promise<number> {
+  try {
+    const res = await api.get(`/order_details`, {
+      params: {
+        filter: `[id_order]=${orderId}&[product_id]=${productId}`,
+        display: 'full',
+      },
+    });
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const price = doc.querySelector('unit_price_tax_incl')?.textContent;
+    return parseFloat(price || '0');
+  } catch (error) {
+    console.error(`Erreur récupération prix unitaire pour commande ${orderId}, produit ${productId}`, error);
+    return 0;
+  }
+}
+
+// N'oubliez pas d'ajouter fetchPaidOrderRows à l'objet orderService si vous utilisez un objet exporté
+// Par exemple, si vous avez déjà un objet orderService, ajoutez-y ces nouvelles fonctions.
+export const orderService = {
+  fetchPSOrders,
+  updatePSOrderStatus,
+  fetchOrderRows,
+  transformCartToOrder,
+  deletePSCart,
+  deleteZombieCarts,
+  getOrdersStats,
+  fetchPaidOrderRows,     // <-- ajout
+  // fetchOrderRowUnitPrice n'est pas exposée car privée
+};

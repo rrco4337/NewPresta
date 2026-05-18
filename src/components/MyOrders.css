@@ -15,7 +15,7 @@
   align-items: center;
   gap: var(--space-3);
   font-size: var(--font-size-sm);
-  color: var(--color-gray-500);
+  color: #94a3b8;
   margin-bottom: var(--space-8);
 }
 
@@ -43,22 +43,22 @@
 .myorders-title {
   font-size: var(--font-size-3xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-gray-900);
+  color: #f1f5f9;
   margin: 0;
 }
 
 .myorders-customer {
   font-size: var(--font-size-sm);
-  color: var(--color-gray-600);
+  color: #cbd5e1;
 }
 
 /* ── Table wrapper ───────────────────────────────────────────────────────────── */
 .myorders-table-wrap {
-  border: 1px solid var(--color-gray-200);
+  border: 1px solid #334155;
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
-  background: var(--color-white);
+  background: #1e293b;
 }
 
 /* ── Table ───────────────────────────────────────────────────────────────────── */
@@ -69,8 +69,8 @@
 }
 
 .myorders-table thead {
-  background: var(--color-gray-50);
-  border-bottom: 1px solid var(--color-gray-200);
+  background: #0f172a;
+  border-bottom: 1px solid #334155;
 }
 
 .myorders-table th {
@@ -78,15 +78,15 @@
   text-align: left;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
-  color: var(--color-gray-700);
+  color: #cbd5e1;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
 .myorders-table td {
   padding: var(--space-4) var(--space-5);
-  color: var(--color-gray-700);
-  border-bottom: 1px solid var(--color-gray-100);
+  color: #cbd5e1;
+  border-bottom: 1px solid #334155;
   vertical-align: middle;
 }
 

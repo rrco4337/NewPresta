@@ -16,18 +16,18 @@
   margin: 0;
   font-size: 24px;
   font-weight: 700;
-  color: var(--color-gray-900);
+  color: #f1f5f9;
 }
 
 .audit-subtitle {
   margin: 6px 0 0 0;
-  color: var(--color-gray-500);
+  color: #94a3b8;
   font-size: 14px;
 }
 
 .audit-section {
-  background: var(--color-white);
-  border: 1px solid var(--color-gray-200);
+  background: #1e293b;
+  border: 1px solid #334155;
   border-radius: var(--radius-xl);
   padding: 20px;
   box-shadow: var(--shadow-sm);
@@ -44,7 +44,7 @@
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: var(--color-gray-900);
+  color: #f1f5f9;
 }
 
 .audit-count {
@@ -54,14 +54,14 @@
   font-size: 14px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: var(--color-gray-100);
-  color: var(--color-gray-700);
+  background: #334155;
+  color: #cbd5e1;
 }
 
 .audit-table-wrap {
   overflow: auto;
   border-radius: var(--radius-lg);
-  border: 1px solid var(--color-gray-200);
+  border: 1px solid #334155;
 }
 
 .audit-table {
@@ -71,28 +71,28 @@
 }
 
 .audit-table thead {
-  background: var(--color-gray-50);
+  background: #0f172a;
   text-align: left;
 }
 
 .audit-table th,
 .audit-table td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--color-gray-200);
-  color: var(--color-gray-700);
+  border-bottom: 1px solid #334155;
+  color: #cbd5e1;
   white-space: nowrap;
 }
 
 .audit-table tbody tr:hover {
-  background: var(--color-gray-50);
+  background: #0f172a;
 }
 
 .audit-error {
-  color: var(--color-error-600);
+  color: #f87171;
   font-size: 14px;
 }
 
 .audit-empty {
-  color: var(--color-gray-500);
+  color: #94a3b8;
   font-size: 14px;
 }

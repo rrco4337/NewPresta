@@ -9,14 +9,14 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-8) var(--space-4);
-  background: linear-gradient(135deg, var(--color-success-50), var(--color-gray-50));
+  background: linear-gradient(135deg, #0f172a, #1e293b);
   animation: fade-in var(--transition-slow);
 }
 
 /* ── Card ────────────────────────────────────────────────────────────────────── */
 .confirm-card {
-  background: var(--color-white);
-  border: 1px solid var(--color-gray-200);
+  background: #1e293b;
+  border: 1px solid #334155;
   border-radius: var(--radius-2xl);
   padding: var(--space-12) var(--space-8);
   max-width: 520px;
@@ -52,21 +52,21 @@
 .confirm-title {
   font-size: var(--font-size-3xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-success-700);
+  color: #22c55e;
   margin: 0;
 }
 
 .confirm-sub {
   font-size: var(--font-size-lg);
-  color: var(--color-gray-600);
+  color: #cbd5e1;
   margin: 0;
 }
 
 /* ── Details grid ───────────────────────────────────────────────────────────── */
 .confirm-details {
   width: 100%;
-  background: linear-gradient(135deg, var(--color-gray-50), var(--color-gray-100));
-  border: 1px solid var(--color-gray-200);
+  background: linear-gradient(135deg, #1e293b, #0f172a);
+  border: 1px solid #334155;
   border-radius: var(--radius-lg);
   padding: var(--space-6);
   display: grid;
@@ -83,7 +83,7 @@
 .confirm-row-label {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-gray-600);
+  color: #94a3b8;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -91,7 +91,7 @@
 .confirm-row strong {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
-  color: var(--color-gray-900);
+  color: #f1f5f9;
 }
 
 /* ── COD notice box ────────────────────────────────────────────────────────────── */

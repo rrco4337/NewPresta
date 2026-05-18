@@ -6,31 +6,31 @@
 
 /* ── Variables ── */
 :root {
-  --su-bg: #f5f4f1;
-  --su-surface: #ffffff;
-  --su-border: #d9d6cf;
-  --su-border-strong: #b5b0a6;
-  --su-text: #1a1916;
-  --su-text-muted: #7a756b;
-  --su-accent: #1a1916;
+  --su-bg: #0f172a;
+  --su-surface: #1e293b;
+  --su-border: #334155;
+  --su-border-strong: #475569;
+  --su-text: #f1f5f9;
+  --su-text-muted: #cbd5e1;
+  --su-accent: #3b82f6;
 
-  --su-ok: #1b6b3a;
-  --su-ok-bg: #d4edda;
-  --su-low: #7a4f00;
-  --su-low-bg: #fff0cc;
-  --su-zero: #8b1a1a;
-  --su-zero-bg: #fde8e8;
+  --su-ok: #22c55e;
+  --su-ok-bg: #064e3b;
+  --su-low: #f59e0b;
+  --su-low-bg: #78350f;
+  --su-zero: #ef4444;
+  --su-zero-bg: #7f1d1d;
 
-  --su-primary: #1a1916;
-  --su-primary-hover: #3d3a34;
-  --su-danger: #c0392b;
-  --su-danger-hover: #a93226;
+  --su-primary: #3b82f6;
+  --su-primary-hover: #2563eb;
+  --su-danger: #ef4444;
+  --su-danger-hover: #dc2626;
 
   --su-radius: 4px;
   --su-font: 'IBM Plex Sans', system-ui, sans-serif;
   --su-font-mono: 'IBM Plex Mono', 'Courier New', monospace;
-  --su-shadow: 0 1px 3px rgba(0, 0, 0, .08);
-  --su-shadow-md: 0 2px 8px rgba(0, 0, 0, .12);
+  --su-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  --su-shadow-md: 0 2px 8px rgba(0, 0, 0, .4);
 }
 
 /* ── Base ── */

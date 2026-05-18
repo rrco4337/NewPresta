@@ -14,14 +14,14 @@
 
 .orders-count {
   font-size: 13px;
-  color: #64748b;
+  color: #94a3b8;
 }
 
 /* ── Table ─────────────────────────────────────────────────────────────────── */
 .orders-table-wrapper {
   overflow-x: auto;
   border-radius: 10px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #334155;
 }
 
 .orders-table {
@@ -31,19 +31,19 @@
 }
 
 .orders-table th {
-  background: #f1f5f9;
-  color: #475569;
+  background: #1e293b;
+  color: #cbd5e1;
   font-weight: 600;
   padding: 10px 14px;
   text-align: left;
   white-space: nowrap;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #334155;
 }
 
 .orders-table td {
   padding: 10px 14px;
-  color: #334155;
-  border-bottom: 1px solid #f1f5f9;
+  color: #cbd5e1;
+  border-bottom: 1px solid #334155;
   vertical-align: middle;
 }
 
@@ -52,18 +52,18 @@
 }
 
 .orders-table tbody tr:hover td {
-  background: #f8fafc;
+  background: #0f172a;
 }
 
 .orders-cell-ref {
   font-family: monospace;
   font-weight: 600;
-  color: #1e293b;
+  color: #60a5fa;
 }
 
 .orders-cell-amount {
   font-weight: 600;
-  color: #1e293b;
+  color: #f1f5f9;
   white-space: nowrap;
 }
 

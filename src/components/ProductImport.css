@@ -10,7 +10,7 @@
 
 /* ── Dropzone ─────────────────────────────────────────────────────────────── */
 .import-dropzone {
-  border: 2px dashed #cbd5e1;
+  border: 2px dashed #475569;
   border-radius: 12px;
   padding: 48px 32px;
   display: flex;
@@ -19,13 +19,13 @@
   gap: 8px;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
-  background: #f8fafc;
+  background: #0f172a;
 }
 
 .import-dropzone:hover,
 .import-dropzone--over {
-  border-color: #6366f1;
-  background: #eef2ff;
+  border-color: #3b82f6;
+  background: #1e3a8a;
 }
 
 .import-dropzone-icon {
@@ -37,7 +37,7 @@
 
 .import-dropzone-text {
   font-size: 15px;
-  color: #334155;
+  color: #f1f5f9;
   margin: 0;
 }
 
@@ -55,7 +55,7 @@
 .import-section-title {
   font-size: 15px;
   font-weight: 600;
-  color: #1e293b;
+  color: #f1f5f9;
   margin: 0 0 12px;
 }
 

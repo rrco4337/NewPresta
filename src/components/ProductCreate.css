@@ -19,7 +19,7 @@
 .form-header h2 {
   font-size: 1.375rem;
   font-weight: 700;
-  color: #111827;
+  color: #f1f5f9;
 }
 
 .btn-back {
@@ -27,9 +27,9 @@
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: #fff;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
+  background: #1e293b;
+  color: #cbd5e1;
+  border: 1px solid #334155;
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.875rem;
@@ -38,9 +38,9 @@
 }
 
 .btn-back:hover {
-  background: #f9fafb;
-  color: #111827;
-  border-color: #d1d5db;
+  background: #334155;
+  color: #f1f5f9;
+  border-color: #475569;
 }
 
 /* ================================================================
@@ -64,16 +64,16 @@
 }
 
 .form-status.success {
-  background: #f0fdf4;
-  color: #15803d;
-  border: 1px solid #bbf7d0;
-  border-left: 3px solid #16a34a;
+  background: #064e3b;
+  color: #86efac;
+  border: 1px solid #10b981;
+  border-left: 3px solid #10b981;
 }
 
 .form-status.error {
-  background: #fef2f2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: #7f1d1d;
+  color: #fca5a5;
+  border: 1px solid #dc2626;
   border-left: 3px solid #dc2626;
 }
 

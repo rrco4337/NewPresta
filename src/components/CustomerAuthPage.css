@@ -9,7 +9,7 @@
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
-  background: linear-gradient(135deg, var(--color-primary-50), var(--color-gray-50));
+  background: linear-gradient(135deg, #0f172a, #1e293b);
   position: relative;
   overflow: hidden;
 }
@@ -21,7 +21,7 @@
   right: -10%;
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, var(--color-primary-200), transparent);
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.1), transparent);
   border-radius: 50%;
   pointer-events: none;
   opacity: 0.3;
@@ -29,8 +29,8 @@
 
 /* ── Card ────────────────────────────────────────────────────────────────────── */
 .auth-card {
-  background: var(--color-white);
-  border: 1px solid var(--color-gray-200);
+  background: #1e293b;
+  border: 1px solid #334155;
   border-radius: var(--radius-2xl);
   padding: var(--space-8);
   width: 100%;
@@ -53,7 +53,7 @@
 
 .auth-back {
   font-size: var(--font-size-sm);
-  color: var(--color-primary-600);
+  color: #60a5fa;
   text-decoration: none;
   font-weight: var(--font-weight-medium);
   transition: color var(--transition-fast);
@@ -63,15 +63,15 @@
 }
 
 .auth-back:hover {
-  color: var(--color-primary-700);
+  color: #93c5fd;
 }
 
 .auth-title {
   font-size: var(--font-size-3xl);
   font-weight: var(--font-weight-bold);
-  color: var(--color-gray-900);
+  color: #f1f5f9;
   margin: 0;
-  background: linear-gradient(135deg, var(--color-gray-900), var(--color-primary-600));
+  background: linear-gradient(135deg, #f1f5f9, #93c5fd);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -81,7 +81,7 @@
 .auth-tabs {
   display: flex;
   gap: var(--space-2);
-  border-bottom: 1px solid var(--color-gray-200);
+  border-bottom: 1px solid #334155;
   padding-bottom: var(--space-4);
 }
 
@@ -92,7 +92,7 @@
   background: transparent;
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
-  color: var(--color-gray-600);
+  color: #cbd5e1;
   cursor: pointer;
   border-bottom: 2px solid transparent;
   margin-bottom: -6px;

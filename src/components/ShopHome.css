@@ -6,26 +6,26 @@
 .shop-hero {
   text-align: center;
   padding: var(--space-12) var(--space-6);
-  background: linear-gradient(135deg, var(--color-primary-50) 0%, var(--color-gray-50) 100%);
+  background: linear-gradient(135deg, #1e3a8a 0%, #334155 100%);
   border-radius: var(--radius-2xl);
   margin-bottom: var(--space-12);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-4);
-  border: 1px solid var(--color-primary-100);
+  border: 1px solid #475569;
 }
 
 .shop-hero-title {
   font-size: clamp(24px, 4vw, 36px);
   font-weight: 800;
-  color: #1e293b;
+  color: #f1f5f9;
   margin: 0;
 }
 
 .shop-hero-sub {
   font-size: 15px;
-  color: #94a3b8;
+  color: #cbd5e1;
   margin: 0;
 }
 
@@ -51,19 +51,19 @@
 .shop-search-input {
   width: 100%;
   padding: 11px 40px 11px 40px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #334155;
   border-radius: 10px;
   font-size: 14px;
-  color: #1e293b;
-  background: #fff;
+  color: #f1f5f9;
+  background: #1e293b;
   outline: none;
   box-sizing: border-box;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .shop-search-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59,130,246,0.2);
 }
 
 .shop-search-clear {
@@ -91,9 +91,9 @@
 
 /* ── Carte produit ───────────────────────────────────────────────────────────── */
 .product-card {
-  background: #fff;
+  background: #1e293b;
   border-radius: 14px;
-  border: 1px solid #e2e8f0;
+  border: 1px solid #334155;
   overflow: hidden;
   display: flex;
   flex-direction: column;

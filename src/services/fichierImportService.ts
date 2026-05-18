@@ -484,6 +484,13 @@ export async function importFichier1(
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
     .filter(({ row }) => (row[cols.nomIdx] ?? '').trim() !== '');
  
+  categoryCache = new Map();
+  categoryPending = new Map();
+  categoryLoadPromise = null;
+  productRefCache = new Map();
+  taxRateCache = new Map();
+  productDateCache = new Map();
+
   // Tableau pré-alloué pour conserver l'ordre CSV malgré la concurrence
   const results: FichierImportResult[] = new Array(rows.length);
   let done = 0;

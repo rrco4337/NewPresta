@@ -173,6 +173,16 @@ function App() {
                 </ProtectedRoute>
               }
             />
+             <Route
+              path="/stock/category/"
+              element={
+                <ProtectedRoute>
+                  <LayoutWrapper>
+                    <StockByCategoryTable />
+                  </LayoutWrapper>
+                </ProtectedRoute>
+              }
+            />
             <Route
               path="/reset"
               element={

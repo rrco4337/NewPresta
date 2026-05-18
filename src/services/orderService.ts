@@ -31,7 +31,7 @@ export interface PSOrder {
   cartRows?: CartRow[];
 }
 
-// 📦 Les 3 statuts selon les spécifications J2
+// 📦 Les 4 statuts selon les spécifications J2 (avec LIVRÉ)
 export const PS_STATE_LABELS: Record<number, string> = {
   1:  '📦 Dans le panier',      // État panier (cart non validé)
   2:  '✅ Paiement effectué',    // Commande validée + paiement OK
@@ -76,8 +76,6 @@ export function isTransitionAllowed(oldState: number, newState: number): boolean
 // ==========================================
 // PRESTASHOP ORDERS
 // ==========================================
-
-
 
 async function fetchCustomerName(customerId: string): Promise<string> {
   try {
@@ -264,8 +262,6 @@ async function parseCartsXml(
   // Correction du filtre : on utilise un type assertion plus simple ici
   return carts.filter((c): c is NonNullable<typeof c> => c !== null);
 }
-// parseCartsXml retourne les paniers avec leur ID simple
-// orderService.ts
 
 export async function transformCartToOrder(order: PSOrder, newState: number): Promise<boolean> {
   try {
@@ -320,6 +316,10 @@ export async function updatePSOrderStatus(orderId: string, stateId: number): Pro
   // 🔒 Vérification supplémentaire avant envoi à l'API
   // On ne devrait jamais envoyer une transition vers panier (1)
   // car c'est interdit par isTransitionAllowed, mais sécurité supplémentaire
+  if (stateId === 1) {
+    console.error(`Tentative interdite: impossible de passer la commande ${orderId} en statut "panier" (1)`);
+    return false;
+  }
   
   try {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -371,18 +371,22 @@ export async function deleteZombieCarts(orders: PSOrder[]): Promise<{ deleted: n
 export function getOrdersStats(orders: PSOrder[]) {
   const paniers = orders.filter(o => o.currentState === 1);
   const payees = orders.filter(o => o.currentState === 2);
+  const livrees = orders.filter(o => o.currentState === 5);
   const annulees = orders.filter(o => o.currentState === 6);
   
   const montantTotalPaye = payees.reduce((sum, o) => sum + o.totalPaid, 0);
   const montantTotalPaniers = paniers.reduce((sum, o) => sum + o.totalPaid, 0);
+  const montantTotalLivrees = livrees.reduce((sum, o) => sum + o.totalPaid, 0);
   
   return {
     total: orders.length,
     paniers: paniers.length,
     payees: payees.length,
+    livrees: livrees.length,
     annulees: annulees.length,
     montantTotalPaye,
     montantTotalPaniers,
+    montantTotalLivrees,
   };
 }
 

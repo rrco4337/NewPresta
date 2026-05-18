@@ -42,37 +42,66 @@ async function resolveSecureKey(customerId: string): Promise<string> {
 // ── Fetch existing customer cart ──────────────────────────────────────────────
 
 /**
- * Fetch the most recent cart for a given customer from PrestaShop.
- * Returns the cart ID and its product rows, or null if no cart exists.
+ * Check whether a PS cart is already converted into an order.
+ * Returns true if an order with id_cart=cartId exists.
+ */
+async function isCartAlreadyOrdered(cartId: string): Promise<boolean> {
+  try {
+    const res = await api.get(`/orders?display=[id]&filter[id_cart]=[${cartId}]&limit=1`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    return doc.querySelector('order') !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetch the most recent FREE (not yet ordered) cart for a given customer.
+ * Iterates through the most recent carts until a free one is found, or returns null.
  */
 export async function fetchCustomerCart(customerId: string): Promise<RemoteCartResult | null> {
   try {
+    // Fetch the 5 most recent carts and pick the first one that isn't already an order
     const res = await api.get(
-      `/carts?display=full&filter[id_customer]=[${customerId}]&sort=[id_DESC]&limit=1`
+      `/carts?display=full&filter[id_customer]=[${customerId}]&sort=[id_DESC]&limit=5`
     );
     const doc = new DOMParser().parseFromString(res.data, 'text/xml');
-    const cartEl = doc.querySelector('cart');
-    if (!cartEl) return null;
+    const cartEls = Array.from(doc.querySelectorAll('cart'));
+    if (cartEls.length === 0) return null;
 
-    const cartId = cartEl.querySelector('id')?.textContent?.trim();
-    if (!cartId) return null;
+    for (const cartEl of cartEls) {
+      const cartId = cartEl.querySelector('id')?.textContent?.trim();
+      if (!cartId) continue;
 
-    const items: RemoteCartResult['items'] = [];
-    cartEl.querySelectorAll('cart_row').forEach(row => {
-      const productId  = row.querySelector('id_product')?.textContent?.trim();
-      const quantity   = parseInt(row.querySelector('quantity')?.textContent ?? '0', 10);
-      const attrId     = row.querySelector('id_product_attribute')?.textContent?.trim();
-      if (productId && quantity > 0) {
-        items.push({
-          productId,
-          quantity,
-          attributeId: attrId && attrId !== '0' ? attrId : undefined,
-        });
+      // Skip carts that are already linked to an order — they are invisible in the
+      // BackOffice pending-cart list (filtered by cartIdsAlreadyOrdered) and must
+      // not be reused as the active draft cart.
+      const alreadyOrdered = await isCartAlreadyOrdered(cartId);
+      if (alreadyOrdered) {
+        console.log('[fetchCustomerCart] Cart', cartId, 'already linked to an order — skipping');
+        continue;
       }
-    });
 
-    console.log('[fetchCustomerCart] Found remote cart:', { cartId, itemCount: items.length });
-    return { cartId, items };
+      const items: RemoteCartResult['items'] = [];
+      cartEl.querySelectorAll('cart_row').forEach(row => {
+        const productId = row.querySelector('id_product')?.textContent?.trim();
+        const quantity  = parseInt(row.querySelector('quantity')?.textContent ?? '0', 10);
+        const attrId    = row.querySelector('id_product_attribute')?.textContent?.trim();
+        if (productId && quantity > 0) {
+          items.push({
+            productId,
+            quantity,
+            attributeId: attrId && attrId !== '0' ? attrId : undefined,
+          });
+        }
+      });
+
+      console.log('[fetchCustomerCart] Found free cart:', { cartId, itemCount: items.length });
+      return { cartId, items };
+    }
+
+    // All recent carts are already ordered — no free cart found
+    return null;
   } catch (err) {
     console.error('[fetchCustomerCart] Error:', err);
     return null;
@@ -85,6 +114,8 @@ interface SyncParams {
   customerId: string;
   items: CartItem[];
   existingCartId?: string;
+  /** Pass the customer's secure_key directly to avoid the sessionStorage race condition on login. */
+  secureKey?: string;
 }
 
 /**
@@ -100,8 +131,8 @@ export async function syncRemoteCart(params: SyncParams): Promise<string | null>
   }
 
   try {
-    // Resolve all required fields
-    const secureKey = await resolveSecureKey(customerId);
+    // Use provided secureKey first, then fall back to sessionStorage / API fetch
+    const secureKey = params.secureKey || await resolveSecureKey(customerId);
     const addressId = await resolveAddressId(customerId);
 
     // Validate required fields

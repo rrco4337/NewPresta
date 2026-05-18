@@ -154,10 +154,11 @@ const StockEvolution: React.FC = () => {
 
   return (
     <div className="stock-evolution-page">
-      <div className="page-container">
-        <h1 className="page-title">Évolution du stock</h1>
-        
-        <div className="filters-card">
+      <div className="stock-evolution-header">
+        <h1>Évolution du stock</h1>
+      </div>
+
+      <div className="filters-card">
           <div className="filters-grid">
             <div className="filter-group">
               <label>Produit / Déclinaison *</label>
@@ -245,51 +246,49 @@ const StockEvolution: React.FC = () => {
           </div>
         )}
 
-        {/* Tableau */}
-        <div className="table-wrapper">
-          {loading ? (
-            <div className="loading-state">
-              <div className="spinner"></div>
-              <p>Chargement des données...</p>
-            </div>
-          ) : error ? (
-            <div className="error-state">
-              <p>{error}</p>
-              <button onClick={handleSearch} className="btn btn-primary">Réessayer</button>
-            </div>
-          ) : dailyData.length === 0 ? (
-            <div className="empty-state">
-              <p>Aucune donnée à afficher</p>
-              <p className="empty-hint">Sélectionnez un produit pour voir l'évolution du stock</p>
-            </div>
-          ) : (
-            <table className="stock-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Stock (quantité)</th>
-                  <th>Mouvement</th>
-                  <th>Note</th>
+      <div className="table-wrapper">
+        {loading ? (
+          <div className="loading-state">
+            <div className="spinner" />
+            <p>Chargement des données…</p>
+          </div>
+        ) : error ? (
+          <div className="error-state">
+            <p>{error}</p>
+            <button onClick={handleSearch} className="btn btn-primary">Réessayer</button>
+          </div>
+        ) : dailyData.length === 0 ? (
+          <div className="empty-state">
+            <p>Aucune donnée à afficher</p>
+            <p className="empty-hint">Sélectionnez un produit pour voir l'évolution du stock</p>
+          </div>
+        ) : (
+          <table className="stock-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Stock (quantité)</th>
+                <th>Mouvement</th>
+                <th>Note</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyData.map((day, idx) => (
+                <tr key={idx}>
+                  <td className="date-cell">{formatDate(day.date)}</td>
+                  <td className="quantity-cell">{day.quantity}</td>
+                  <td className={`movement-cell ${getMovementClass(day.movement)}`}>
+                    {day.movement !== 0 && (
+                      <>{day.movement > 0 ? '+' : ''}{day.movement}</>
+                    )}
+                    {day.movement === 0 && '—'}
+                  </td>
+                  <td className="note-cell">{day.note || '—'}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {dailyData.map((day, idx) => (
-                  <tr key={idx}>
-                    <td className="date-cell">{formatDate(day.date)}</td>
-                    <td className="quantity-cell">{day.quantity}</td>
-                    <td className={`movement-cell ${getMovementClass(day.movement)}`}>
-                      {day.movement !== 0 && (
-                        <>{day.movement > 0 ? '+' : ''}{day.movement}</>
-                      )}
-                      {day.movement === 0 && '—'}
-                    </td>
-                    <td className="note-cell">{day.note || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

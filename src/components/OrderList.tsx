@@ -30,10 +30,9 @@ function psStatusLabel(state: number): string {
 }
 
 function orderStatusClass(state: number): string {
-  // Nouvel état "dans le panier" (exemple: state = 1)
   if (state === 1) return 'status-badge--cart';
   if (state === 2) return 'status-badge--paid';
-  if (state === 5) return 'status-badge--delivered';  // ← NOUVEAU : livré
+  if (state === 5) return 'status-badge--delivered';
   if (state === 8) return 'status-badge--error';
   if (state === 6) return 'status-badge--cancelled';
   return 'status-badge--default';
@@ -42,11 +41,10 @@ function orderStatusClass(state: number): string {
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 const OrderList: React.FC = () => {
-  const [orders, setOrders]         = useState<PSOrder[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState<string | null>(null);
+  const [orders, setOrders] = useState<PSOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Sélection en attente de confirmation
   const [pendingChange, setPendingChange] = useState<{
     order: PSOrder;
     newValue: number;
@@ -60,7 +58,6 @@ const OrderList: React.FC = () => {
     setError(null);
     try {
       const ps = await fetchPSOrders();
-      // Sort by date descending
       ps.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
       setOrders(ps);
     } catch {
@@ -74,19 +71,19 @@ const OrderList: React.FC = () => {
 
   // Vérifier si la transition est autorisée
   const isTransitionAllowed = (oldState: number, newState: number): boolean => {
-    // Règle: "dans le panier" (1) → paiement effectué (2) ou annulé (6) : OK
+    // Règle: "dans le panier" (1) → paiement effectué (2) ou annulé (6)
     if (oldState === 1 && (newState === 2 || newState === 6)) {
       return true;
     }
-    // paiement effectué (2) → livré (5) ou annulé (6) : OK
+    // paiement effectué (2) → livré (5) ou annulé (6)
     if (oldState === 2 && (newState === 5 || newState === 6)) {
       return true;
     }
-    // livré (5) → annulé (6) : OK (rare mais possible pour retour)
+    // livré (5) → annulé (6) - cas de retour
     if (oldState === 5 && newState === 6) {
       return true;
     }
-    // annulé (6) → paiement effectué (2) : rare mais possible
+    // annulé (6) → paiement effectué (2) - cas rare
     if (oldState === 6 && newState === 2) {
       return true;
     }
@@ -98,7 +95,6 @@ const OrderList: React.FC = () => {
     if (newState === 1) {
       return false;
     }
-    // Autres cas non autorisés
     return false;
   };
 
@@ -106,7 +102,6 @@ const OrderList: React.FC = () => {
     const newState = parseInt(newValue, 10);
     const oldState = order.currentState;
     
-    // Vérifier si la transition est autorisée
     if (!isTransitionAllowed(oldState, newState)) {
       alert(`Transition impossible : "${psStatusLabel(oldState)}" → "${psStatusLabel(newState)}" n'est pas autorisée.`);
       return;
@@ -132,25 +127,27 @@ const OrderList: React.FC = () => {
       }
 
       if (success) {
-        // Enregistrer les mouvements de stock
+        // Enregistrer les mouvements de stock selon la transition
         const ref = order.reference || `#${order.id}`;
-        if (newValue === 2) {
-          // Sortie stock : commande validée (paiement accepté)
+        
+        // Transition 1→2 (panier → paiement effectué) : sortie de stock
+        if (oldValue === 1 && newValue === 2) {
           const rows = order.cartRows?.length
             ? order.cartRows
             : await fetchOrderRows(order.id);
           stockService.recordOrderMovements(rows, ref, 'sortie').catch(() => {});
-        } else if (newValue === 5 && oldValue === 2) {
-          // Sortie stock confirmée : commande livrée (on pourrait ne pas faire de mouvement supplémentaire)
-          // Ou optionnellement : log de livraison
-          console.log(`[Livraison] Commande ${ref} marquée comme livrée`);
-        } else if (newValue === 6 && (oldValue === 2 || oldValue === 5)) {
-          // Entrée stock : commande annulée (retour)
+        }
+        // Transition 2→5 (paiement effectué → livré) : pas de mouvement (déjà sorti)
+        else if (oldValue === 2 && newValue === 5) {
+          console.log(`[Livraison] Commande ${ref} marquée comme livrée - aucun mouvement de stock`);
+        }
+        // Transition 2→6 ou 5→6 (annulation) : retour en stock
+        else if (newValue === 6 && (oldValue === 2 || oldValue === 5)) {
           const rows = await fetchOrderRows(order.id);
           stockService.recordOrderMovements(rows, ref, 'entree').catch(() => {});
         }
-
-        // On rafraîchit la liste complète
+        
+        // Rafraîchir la liste
         await load();
       }
     } catch (err) {
@@ -177,20 +174,14 @@ const OrderList: React.FC = () => {
     await load();
   };
 
-  // Déterminer les options disponibles selon l'état actuel
   const getAvailableOptions = (currentState: number): { value: number; label: string }[] => {
     const allOptions = ALLOWED_PS_STATES;
-    
-    // Filtrer selon les transitions autorisées
     return allOptions.filter(opt => {
-      // Même état : on le garde (option courante)
       if (opt.value === currentState) return true;
-      // Vérifier si la transition est autorisée
       return isTransitionAllowed(currentState, opt.value);
     });
   };
 
-  // ── Rendu ─────────────────────────────────────────────────────────────────────
   const paidCount = orders.filter(o => o.currentState === 2).length;
   const deliveredCount = orders.filter(o => o.currentState === 5).length;
   const cancelledCount = orders.filter(o => o.currentState === 6).length;

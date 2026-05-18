@@ -128,7 +128,7 @@ const CheckoutPage: React.FC = () => {
         cartId = remoteCartId;
         console.log('[CheckoutPage] Using existing remote cart:', cartId);
       } else {
-        cartId = await createPSCart(customer.id, selectedAddr, carrierId, checkoutItems, customer.secureKey);
+        cartId = await createPSCart(customer.id, selectedAddr, carrierId, checkoutItems);
         console.log('[CheckoutPage] Created new cart:', cartId);
       }
       const orderId = await createPSOrder({

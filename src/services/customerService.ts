@@ -429,35 +429,6 @@ export async function createPSOrder(params: {
     console.warn('[createPSOrder] Impossible de forcer l\'état 2:', stateErr?.response?.data ?? stateErr.message);
   }
 
-  // Enregistre les mouvements de sortie dans ps_stock_mvt (visible dans le backoffice)
-  // PS décrémente le stock via order_histories mais ne crée pas la ligne de mouvement via l'API
-  for (const item of params.items) {
-    const attributeId = item.attributeId ?? '0';
-    try {
-      const stockRes = await api.get(
-        `/stock_availables?display=[id]&filter[id_product]=[${item.id}]&filter[id_product_attribute]=[${attributeId}]`
-      );
-      const stockDoc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
-      const stockId = stockDoc.querySelector('stock_available > id')?.textContent?.trim();
-      if (!stockId) continue;
-      const mvtXml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
-  <stock_mvt>
-    <id_employee><![CDATA[0]]></id_employee>
-    <id_stock><![CDATA[${stockId}]]></id_stock>
-    <id_stock_mvt_reason><![CDATA[2]]></id_stock_mvt_reason>
-    <physical_quantity><![CDATA[${item.qty}]]></physical_quantity>
-    <sign><![CDATA[-1]]></sign>
-    <price_te><![CDATA[0]]></price_te>
-    <date_add><![CDATA[${new Date().toISOString().slice(0, 19).replace('T', ' ')}]]></date_add>
-  </stock_mvt>
-</prestashop>`;
-      await api.post('/stock_movements', mvtXml);
-    } catch (mvtErr: any) {
-      console.warn(`[createPSOrder] Mouvement sortie produit ${item.id}:`, mvtErr?.response?.status);
-    }
-  }
-
   // ✅ FIX : Forcer la date après création car PrestaShop ignore date_add au POST
   if (params.dateAdd) {
     try {

@@ -567,13 +567,16 @@ try {
         console.warn(`[stockService] recordOrderMovements: ligne introuvable pour ${key}`);
         continue;
       }
-      const note = direction === 'sortie'
-        ? `Sortie commande ${orderRef}`
-        : `Retour commande ${orderRef}`;
       try {
         if (direction === 'sortie') {
-          await stockService.removeStock(line, row.quantity, note);
+          // PS decrements stock_available automatically via order_history;
+          // only record the movement to avoid double-decrement
+          await stockService.addMouvementStock(
+            line.stockId, line.productId, line.combinationId ?? '0',
+            -row.quantity, line.quantity,
+          );
         } else {
+          const note = `Retour commande ${orderRef}`;
           await stockService.addStock(line, row.quantity, note);
         }
       } catch (err) {

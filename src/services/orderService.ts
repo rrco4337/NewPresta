@@ -35,6 +35,7 @@ export interface PSOrder {
 export const PS_STATE_LABELS: Record<number, string> = {
   1:  '📦 Dans le panier',      // État panier (cart non validé)
   2:  '✅ Paiement effectué',    // Commande validée + paiement OK
+  5:  '🚚 Livré',               // Commande livrée — déclenche le mouvement de stock
   6:  '❌ Annulé',               // Commande annulée
 };
 
@@ -42,6 +43,7 @@ export const PS_STATE_LABELS: Record<number, string> = {
 export const ALLOWED_PS_STATES = [
   { label: '📦 Dans le panier',      value: 1 },
   { label: '✅ Paiement effectué',   value: 2 },
+  { label: '🚚 Livré',              value: 5 },
   { label: '❌ Annulé',              value: 6 },
 ];
 
@@ -51,28 +53,23 @@ export function isTransitionAllowed(oldState: number, newState: number): boolean
   if (oldState === 1 && (newState === 2 || newState === 6)) {
     return true;
   }
-  
-  // Règle 2: Payé (2) peut devenir annulé (6)
-  if (oldState === 2 && newState === 6) {
+
+  // Règle 2: Payé (2) peut devenir livré (5) ou annulé (6)
+  if (oldState === 2 && (newState === 5 || newState === 6)) {
     return true;
   }
-  
-  // Règle 3: Annulé (6) peut redevenir payé (2) - cas rare mais possible
+
+  // Règle 3: Livré (5) peut devenir annulé (6) — retour après livraison
+  if (oldState === 5 && newState === 6) {
+    return true;
+  }
+
+  // Règle 4: Annulé (6) peut redevenir payé (2) - cas rare mais possible
   if (oldState === 6 && newState === 2) {
     return true;
   }
-  
-  // Règle 4: Même état → pas de changement
-  if (oldState === newState) {
-    return false;
-  }
-  
-  // Règle 5: TOUT VERS "dans le panier" (1) est INTERDIT
-  if (newState === 1) {
-    return false;
-  }
-  
-  // Autres transitions non autorisées
+
+  // Même état ou retour vers panier (1) : interdit
   return false;
 }
 

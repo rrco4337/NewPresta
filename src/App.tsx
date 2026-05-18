@@ -25,8 +25,7 @@ import DashboardPage from './components/dashboardPage';
 import UserSelectPage from './components/UserSelectPage';
 import StockUpdate from './components/StockUpdate';
 import StockEvolution from './components/StockEvolution';
-import { StockByCategoryTable } from './components/StockCategory';
-
+import FinancialAnalytics from './pages/FinancialAnalytics';
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
   if (pathname === '/products') return 'Produits';
@@ -39,6 +38,7 @@ function resolvePageTitle(pathname: string): string {
   if (pathname === '/reset') return 'Réinitialisation';
   if (pathname === '/audit/import') return 'Audit import';
   if (pathname === '/dashboard') return 'Tableau de bord';
+  if (pathname === '/analytics') return 'Analyse financière';
   return '';
 }
 
@@ -64,7 +64,6 @@ function App() {
 
             {/* ── Route publique login ── */}
             <Route path="/login" element={<Login />} />
-
             {/* ── FrontOffice (public, sans sidebar) ── */}
             <Route
               path="/shop"
@@ -228,6 +227,16 @@ function App() {
                 <ProtectedRoute>
                   <LayoutWrapper>
                     <DashboardPage />
+                  </LayoutWrapper>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/analytics"
+              element={
+                <ProtectedRoute>
+                  <LayoutWrapper>
+                    <FinancialAnalytics />
                   </LayoutWrapper>
                 </ProtectedRoute>
               }

@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { stockService } from './stockService';
+import { getStockAvailableId, setStock } from './fichierImportService';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
@@ -332,6 +334,59 @@ export async function updatePSOrderStatus(orderId: string, stateId: number): Pro
 </prestashop>`;
     
     await api.post('/order_histories', xml);
+    
+    // 📦 Si le statut est "livré", on enregistre un mouvement de sortie de stock
+    // L'ID du statut "livré" dépend de votre configuration PrestaShop
+    // À ajuster selon votre base : généralement 4 ou 5 pour "livré"
+    const STATUS_LIVRE = 5; // ⚠️ À remplacer par l'ID réel du statut "livré" dans votre PS
+    
+   if (stateId === STATUS_LIVRE) {
+  try {
+    const orderResponse = await api.get(
+      `/order_details?filter[id_order]=[${orderId}]&display=full`
+    );
+    const orderDoc = new DOMParser().parseFromString(orderResponse.data, 'text/xml');
+    const orderDetails = orderDoc.querySelectorAll('order_detail');
+
+    if (orderDetails.length === 0) {
+      console.warn(`Commande ${orderId} : aucun order_detail trouvé`);
+    }
+
+    for (const detail of orderDetails) {
+      const productId = detail.querySelector('product_id')?.textContent?.trim();
+      const productAttributeId = detail.querySelector('product_attribute_id')?.textContent?.trim() || '0';
+      const productQuantity = parseInt(
+        detail.querySelector('product_quantity')?.textContent?.trim() || '0'
+      );
+
+      if (!productId || productQuantity === 0) continue;
+
+      // ✅ Même fonction que dans fichierImportService
+      const stockId = await getStockAvailableId(productId, productAttributeId);
+
+      if (!stockId) {
+        console.error(`❌ Stock non trouvé pour produit ${productId}/${productAttributeId}`);
+        continue;
+      }
+
+      // ✅ setStock gère la lecture du stock actuel, le PUT et le mouvement
+      const orderDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      
+      // Lire la quantité actuelle pour calculer la nouvelle
+      const res = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
+      const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+      const currentQty = parseInt(doc.querySelector('quantity')?.textContent ?? '0', 10);
+      const newQty = Math.max(0, currentQty - productQuantity);
+
+      await setStock(stockId, productId, productAttributeId, newQty, orderDate, currentQty);
+
+      console.log(`✓ Stock mis à jour: produit ${productId} | ${currentQty} → ${newQty}`);
+    }
+  } catch (stockError: any) {
+    console.error(`Erreur stock commande ${orderId}:`, stockError?.response?.data ?? stockError);
+  }
+}
+    
     return true;
   } catch (error) {
     console.error(`Erreur updatePSOrderStatus pour ${orderId} -> ${stateId}:`, error);

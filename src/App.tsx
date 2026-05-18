@@ -26,6 +26,7 @@ import UserSelectPage from './components/UserSelectPage';
 import StockUpdate from './components/StockUpdate';
 import StockEvolution from './components/StockEvolution';
 import FinancialAnalytics from './pages/FinancialAnalytics';
+import { StockByCategoryTable } from './components/StockCategory';
 // Résout le titre de page selon la route courante
 function resolvePageTitle(pathname: string): string {
   if (pathname === '/products') return 'Produits';

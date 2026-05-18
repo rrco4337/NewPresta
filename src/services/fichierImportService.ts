@@ -598,7 +598,7 @@ async function getProductIdByRef(reference: string): Promise<string | null> {
   return null;
 }
 
-async function getStockAvailableId(productId: string, combinationId = '0'): Promise<string | null> {
+export async function getStockAvailableId(productId: string, combinationId = '0'): Promise<string | null> {
   try {
     const res = await api.get(
       `/stock_availables?display=[id,id_product,id_product_attribute]&filter[id_product]=[${productId}]&filter[id_product_attribute]=[${combinationId}]`
@@ -609,7 +609,7 @@ async function getStockAvailableId(productId: string, combinationId = '0'): Prom
 }
 
 
-async function setStock(
+export async function setStock(
   stockId: string,
   productId: string,
   combinationId: string,

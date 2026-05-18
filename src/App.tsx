@@ -38,6 +38,7 @@ function resolvePageTitle(pathname: string): string {
   if (pathname === '/reset') return 'Réinitialisation';
   if (pathname === '/audit/import') return 'Audit import';
   if (pathname === '/dashboard') return 'Tableau de bord';
+  if (pathname === '/analytics') return 'Analyse financière';
   return '';
 }
 
@@ -63,7 +64,6 @@ function App() {
 
             {/* ── Route publique login ── */}
             <Route path="/login" element={<Login />} />
-            <Route path="/analytics" element={<FinancialAnalytics />} />
             {/* ── FrontOffice (public, sans sidebar) ── */}
             <Route
               path="/shop"
@@ -217,6 +217,16 @@ function App() {
                 <ProtectedRoute>
                   <LayoutWrapper>
                     <DashboardPage />
+                  </LayoutWrapper>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/analytics"
+              element={
+                <ProtectedRoute>
+                  <LayoutWrapper>
+                    <FinancialAnalytics />
                   </LayoutWrapper>
                 </ProtectedRoute>
               }

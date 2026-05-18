@@ -1,22 +1,29 @@
 export interface FinancialGlobal {
-  totalSales: number;      // Montant total des ventes (TTC)
-  totalPurchases: number;  // Valeur totale du stock (prix achat * qty)
-  profit: number;          // Bénéfice
+  totalSales: number;       // Total ventes HT
+  totalPurchases: number;   // Total achats HT (COGS sur la période)
+  profit: number;           // Bénéfice HT
 }
 
 export interface CategoryStats {
   categoryId: number;
   categoryName: string;
-  sales: number;      // Ventes pour cette catégorie
-  purchases: number;  // Achats (stock) pour cette catégorie
+  sales: number;      // Ventes HT
+  purchases: number;  // Achats HT (COGS)
   profit: number;
 }
 
 export interface ProductStockInfo {
   id_product: number;
   wholesale_price: number;
-  quantity: number;      // stock disponible
+  quantity: number;
   id_category_default: number;
 }
 
+export type FinancialPeriod = 'day' | 'week' | 'month' | 'year' | 'all' | 'custom';
 
+export interface FinancialFilters {
+  period: FinancialPeriod;
+  dateFrom: string | null;  // YYYY-MM-DD
+  dateTo: string | null;    // YYYY-MM-DD
+  categoryId: number | null;
+}

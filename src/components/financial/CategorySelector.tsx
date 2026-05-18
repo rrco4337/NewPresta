@@ -1,17 +1,25 @@
-import { useEffect, useState } from 'react';
-import { categoryService } from '../../services/categoryService';
+import type { CategoryStats } from '../../types/financial.types';
 
-export function CategorySelector({ value, onChange }) {
-  const [categories, setCategories] = useState([]);
-  useEffect(() => {
-    categoryService.getAllCategories().then(setCategories);
-  }, []);
+interface CategorySelectorProps {
+  allCategories: CategoryStats[];
+  value: number | null;
+  onChange: (id: number | null) => void;
+}
+
+export function CategorySelector({ allCategories, value, onChange }: CategorySelectorProps) {
   return (
-    <select value={value || ''} onChange={(e) => onChange(Number(e.target.value) || null)}>
-      <option value="">Toutes les catégories</option>
-      {categories.map(cat => (
-        <option key={cat.id} value={cat.id}>{cat.name}</option>
-      ))}
-    </select>
+    <div className="fa-cat-filter">
+      <span className="fa-filter-label">Catégorie :</span>
+      <select
+        className="fa-cat-select"
+        value={value ?? ''}
+        onChange={e => onChange(Number(e.target.value) || null)}
+      >
+        <option value="">Toutes les catégories</option>
+        {allCategories.map(cat => (
+          <option key={cat.categoryId} value={cat.categoryId}>{cat.categoryName}</option>
+        ))}
+      </select>
+    </div>
   );
 }

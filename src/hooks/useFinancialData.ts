@@ -1,26 +1,65 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { financialService } from '../services/financialService';
+import type { CategoryStats, FinancialFilters, FinancialGlobal } from '../types/financial.types';
 
-export function useFinancialData(selectedCategoryId?: number | null) {
-  const [global, setGlobal] = useState(null);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+interface FinancialState {
+  global: FinancialGlobal | null;
+  allCategories: CategoryStats[];
+  loading: boolean;
+  error: string | null;
+}
+
+export function useFinancialData(filters: FinancialFilters) {
+  const [state, setState] = useState<FinancialState>({
+    global: null,
+    allCategories: [],
+    loading: true,
+    error: null,
+  });
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    setLoading(true);
-    financialService.getFinancialData()
+    let cancelled = false;
+    setState(s => ({ ...s, loading: true, error: null }));
+    financialService
+      .getFinancialData(filters)
       .then(data => {
-        setGlobal(data.global);
-        setCategories(data.byCategory);
+        if (!cancelled) {
+          setState({ global: data.global, allCategories: data.byCategory, loading: false, error: null });
+        }
       })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, []);
+      .catch(err => {
+        if (!cancelled) {
+          setState(s => ({ ...s, loading: false, error: err.message ?? 'Erreur inconnue' }));
+        }
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.period, filters.dateFrom, filters.dateTo, tick]);
 
-  const filteredCategories = selectedCategoryId
-    ? categories.filter(cat => cat.categoryId === selectedCategoryId)
-    : categories;
+  const refetch = useCallback(() => setTick(t => t + 1), []);
 
-  return { global, categories: filteredCategories, loading, error, refetch: () => {} };
+  // Filtrage par catégorie côté client (pas de re-fetch)
+  const categories = filters.categoryId
+    ? state.allCategories.filter(c => c.categoryId === filters.categoryId)
+    : state.allCategories;
+
+  // Recalcul des totaux si filtre catégorie actif
+  const global: FinancialGlobal | null =
+    filters.categoryId && state.global
+      ? (() => {
+          const totalSales = categories.reduce((s, c) => s + c.sales, 0);
+          const totalPurchases = categories.reduce((s, c) => s + c.purchases, 0);
+          return { totalSales, totalPurchases, profit: totalSales - totalPurchases };
+        })()
+      : state.global;
+
+  return {
+    global,
+    categories,
+    allCategories: state.allCategories,
+    loading: state.loading,
+    error: state.error,
+    refetch,
+  };
 }

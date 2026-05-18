@@ -131,7 +131,17 @@ const navModules: NavModule[] = [
       { label: 'Import fichiers',   path: '/import/fichiers' },
     ],
   },
-  { label: 'Stock',     path: '/stock',  icon: <IconLayers />, section: 'Catalogue' },
+  {
+    label: 'Stock',
+    path: '/stock',
+    icon: <IconLayers />,
+    section: 'Catalogue',
+    children: [
+      { label: 'Vue générale',  path: '/stock',            end: true },
+      { label: 'Catégories',    path: '/stock/category' },
+      { label: 'Évolution',     path: '/stock/evolution' },
+    ],
+  },
   { label: 'Commandes', path: '/orders', icon: <IconCart />, section: 'Ventes' },
   { label: 'Clients',   path: '/clients', icon: <IconUsers />, disabled: true, section: 'Ventes' },
   { label: 'Audit import', path: '/audit/import', icon: <IconChart />, section: 'Outils' },

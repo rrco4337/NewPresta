@@ -45,6 +45,11 @@ export default function DashboardPage() {
   const globalTotalOrders  = data.dailyStats.reduce((s, d) => s + d.orderCount, 0);
   const globalTotalRevenue = data.dailyStats.reduce((s, d) => s + d.totalAmount, 0);
   const globalAvg = globalTotalOrders === 0 ? 0 : globalTotalRevenue / globalTotalOrders;
+  const cancel = data.dailyStats.reduce((s, d) => {
+  // Si le montant total du jour est 0 mais qu'il y a des commandes, elles sont toutes annulées
+  // Sinon, il faut utiliser cancelledOrders depuis les stats
+  return s + (d.totalAmount === 0 && d.orderCount > 0 ? d.orderCount : 0);
+}, 0);
 
   const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -86,26 +91,28 @@ export default function DashboardPage() {
       </div>
 
       {/* ── KPI globaux ── */}
-      <div>
-        <p className="db-section-label">Vue globale — toutes commandes</p>
-        <StatsCards
-          totalOrders={globalTotalOrders}
-          totalRevenue={globalTotalRevenue}
-          averageOrderValue={globalAvg}
-        />
-      </div>
-
-      {/* ── KPI filtrés ── */}
-      {filters.selectedDate && (
         <div>
-          <p className="db-section-label">Résultats du {filters.selectedDate}</p>
-          <StatsCards
-            totalOrders={data.stats.totalOrders}
-            totalRevenue={data.stats.totalRevenue}
-            averageOrderValue={data.stats.averageOrderValue}
-          />
-        </div>
-      )}
+  <p className="db-section-label">Vue globale — toutes commandes</p>
+  <StatsCards
+    totalOrders={globalTotalOrders}
+    totalRevenue={globalTotalRevenue}
+    averageOrderValue={globalAvg}
+    cancelledOrders={cancel}  // ← CHANGE: cancelledTotal → cancelledOrders
+  />
+</div>
+      {/* ── KPI filtrés ── */}
+  {filters.selectedDate && (
+  <div>
+    <p className="db-section-label">Résultats du {filters.selectedDate}</p>
+    <StatsCards
+      totalOrders={data.stats.totalOrders}
+      totalRevenue={data.stats.totalRevenue}
+      averageOrderValue={data.stats.averageOrderValue}
+      cancelledOrders={data.stats.cancelledOrders}  // ← OK
+    />
+  </div>
+)}
+      
 
       {/* ── Tableau par jour ── */}
       <OrdersTable dailyStats={data.dailyStats} />

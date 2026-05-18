@@ -33,17 +33,26 @@ export function OrdersTable({ dailyStats }: OrdersTableProps) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((day) => (
-              <tr key={day.date}>
-                <td>
-                  <span className="db-date-badge">{formatDate(day.date)}</span>
-                </td>
-                <td className="db-td-orders">
-                  <span className="db-order-badge">{day.orderCount}</span>
-                </td>
-                <td className="db-td-amount">{formatCurrency(day.totalAmount)}</td>
-              </tr>
-            ))}
+            {sorted.map((day) => {
+              const isTotalZero = day.totalAmount === 0;
+              const displayAmount = isTotalZero ? '0,00 € (annulé)' : formatCurrency(day.totalAmount);
+              
+              return (
+                <tr key={day.date}>
+                  <td>
+                    <span className="db-date-badge">{formatDate(day.date)}</span>
+                  </td>
+                  <td className="db-td-orders">
+                    <span className="db-order-badge">{day.orderCount}</span>
+                  </td>
+                  <td className="db-td-amount">
+                    <span style={{ color: isTotalZero ? '#dc3545' : 'inherit' }}>
+                      {displayAmount}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}

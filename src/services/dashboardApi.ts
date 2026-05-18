@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+
+export const CANCELED_STATE_ID = '6'; 
 const apiClient = axios.create({
   baseURL: '' + (import.meta.env.VITE_API_BASE_URL || '/api'),
   headers: {

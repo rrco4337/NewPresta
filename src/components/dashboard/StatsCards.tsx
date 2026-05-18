@@ -4,6 +4,8 @@ interface StatsCardsProps {
   totalOrders: number;
   totalRevenue: number;
   averageOrderValue: number;
+  cancelledOrders?: number;
+  cancelledTotal?: number;
 }
 
 const IconOrders = () => (
@@ -30,7 +32,40 @@ const IconAvg = () => (
   </svg>
 );
 
-export function StatsCards({ totalOrders, totalRevenue, averageOrderValue }: StatsCardsProps) {
+export function StatsCards({ totalOrders, totalRevenue, averageOrderValue, cancelledOrders = 0, cancelledTotal = 0 }: StatsCardsProps) {
+  const activeOrders = totalOrders - cancelledOrders;
+  
+  // Debug: Afficher dans la console
+  console.log('StatsCards - cancelledOrders:', cancelledOrders);
+  console.log('StatsCards - totalOrders:', totalOrders);
+  console.log('StatsCards - cancelledTotal:', cancelledTotal);
+  
+  // Styles inline de secours
+  const subvalueStyle = {
+    display: 'flex',
+    gap: '8px',
+    fontSize: '0.75rem',
+    marginTop: '4px',
+    flexDirection: 'column' as const,
+    alignItems: 'flex-start'
+  };
+  
+  const activeStyle = {
+    color: '#10b981',
+    background: 'rgba(16, 185, 129, 0.1)',
+    padding: '2px 6px',
+    borderRadius: '12px',
+    fontSize: '0.7rem'
+  };
+  
+  const cancelledStyle = {
+    color: '#dc3545',
+    background: 'rgba(220, 53, 69, 0.1)',
+    padding: '2px 6px',
+    borderRadius: '12px',
+    fontSize: '0.7rem'
+  };
+  
   return (
     <div className="db-kpi-grid">
       <div className="db-kpi-card">
@@ -39,7 +74,15 @@ export function StatsCards({ totalOrders, totalRevenue, averageOrderValue }: Sta
         </div>
         <div className="db-kpi-body">
           <div className="db-kpi-label">Commandes</div>
-          <div className="db-kpi-value">{totalOrders}</div>
+          <div className="db-kpi-value" style={{ fontSize: '24px', fontWeight: 'bold' }}>
+            {totalOrders}
+            {/* Affichage toujours visible pour tester */}
+            <div style={subvalueStyle}>
+              <span style={activeStyle}>✓ validées: {activeOrders}</span>
+              <span style={cancelledStyle}>✗ annulées: {cancelledOrders}</span>
+          
+            </div>
+          </div>
         </div>
       </div>
 
@@ -49,7 +92,9 @@ export function StatsCards({ totalOrders, totalRevenue, averageOrderValue }: Sta
         </div>
         <div className="db-kpi-body">
           <div className="db-kpi-label">Chiffre d'affaires</div>
-          <div className="db-kpi-value db-kpi-value--green">{formatCurrency(totalRevenue)}</div>
+          <div className="db-kpi-value db-kpi-value--green" style={{ fontSize: '24px', fontWeight: 'bold' }}>
+            {formatCurrency(totalRevenue)}
+          </div>
         </div>
       </div>
 
@@ -59,7 +104,9 @@ export function StatsCards({ totalOrders, totalRevenue, averageOrderValue }: Sta
         </div>
         <div className="db-kpi-body">
           <div className="db-kpi-label">Panier moyen</div>
-          <div className="db-kpi-value db-kpi-value--pink">{formatCurrency(averageOrderValue)}</div>
+          <div className="db-kpi-value db-kpi-value--pink" style={{ fontSize: '24px', fontWeight: 'bold' }}>
+            {formatCurrency(averageOrderValue)}
+          </div>
         </div>
       </div>
     </div>

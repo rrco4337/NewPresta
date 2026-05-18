@@ -407,3 +407,31 @@
   border-radius: var(--radius-lg);
   animation-delay: 0.15s;
 }
+
+
+.db-kpi-value {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.db-kpi-subvalue {
+  display: flex;
+  gap: 8px;
+  font-size: 0.75rem;
+  font-weight: normal;
+}
+
+.db-kpi-subvalue-active {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.1);
+  padding: 2px 6px;
+  border-radius: 12px;
+}
+
+.db-kpi-subvalue-cancelled {
+  color: #dc3545;
+  background: rgba(220, 53, 69, 0.1);
+  padding: 2px 6px;
+  border-radius: 12px;
+}

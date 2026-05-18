@@ -14,20 +14,20 @@ const STORAGE_KEY = 'ps_shop_customer';
 export const CustomerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [customer, setCustomerState] = useState<Customer | null>(() => {
     try {
-      const raw = sessionStorage.getItem(STORAGE_KEY);
+      const raw = localStorage.getItem(STORAGE_KEY);
       return raw ? (JSON.parse(raw) as Customer) : null;
     } catch { return null; }
   });
 
   useEffect(() => {
     if (customer) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(customer));
-      // Also store the secure_key separately for quick access by cart sync
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(customer));
+      // Store secure_key in sessionStorage for quick access by cart sync
       if (customer.secureKey) {
         sessionStorage.setItem('customerSecureKey', customer.secureKey);
       }
     } else {
-      sessionStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(STORAGE_KEY);
       sessionStorage.removeItem('customerSecureKey');
     }
   }, [customer]);

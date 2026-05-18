@@ -4,6 +4,7 @@ import { syncRemoteCart, fetchCustomerCart } from '../services/cartSyncService';
 import { fetchShopProductDetail } from '../services/shopService';
 
 const CART_KEY = 'shopCart';
+const REMOTE_CART_ID_KEY = 'shopRemoteCartId';
 
 function roundMoney(value: number): number {
   return Math.round((value + Number.EPSILON) * 1_000_000) / 1_000_000;
@@ -41,11 +42,11 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | null>(null);
 
-// ── Helpers for sessionStorage persistence ────────────────────────────────────
+// ── Persistence helpers (localStorage) ────────────────────────────────────────
 
-function readCartFromSession(): CartItem[] {
+function readCartFromStorage(): CartItem[] {
   try {
-    const raw = JSON.parse(sessionStorage.getItem(CART_KEY) ?? '[]') as unknown;
+    const raw = JSON.parse(localStorage.getItem(CART_KEY) ?? '[]') as unknown;
     if (!Array.isArray(raw)) return [];
     return raw
       .map((item: unknown) => {
@@ -85,68 +86,95 @@ function readCartFromSession(): CartItem[] {
   }
 }
 
-function writeCartToSession(items: CartItem[]): void {
-  sessionStorage.setItem(CART_KEY, JSON.stringify(items));
+function writeCartToStorage(items: CartItem[]): void {
+  localStorage.setItem(CART_KEY, JSON.stringify(items));
+}
+
+// ── Merge helper ──────────────────────────────────────────────────────────────
+// Prioritise remote items; append local items absent from remote.
+function mergeCartItems(remote: CartItem[], local: CartItem[]): CartItem[] {
+  const merged = [...remote];
+  for (const localItem of local) {
+    const key = itemKey(localItem.id, localItem.attributeId);
+    const alreadyPresent = merged.some(i => itemKey(i.id, i.attributeId) === key);
+    if (!alreadyPresent) merged.push(localItem);
+  }
+  return merged;
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { customer } = useCustomer();
-  const [items, setItems] = useState<CartItem[]>(readCartFromSession);
-  const [remoteCartId, setRemoteCartId] = useState<string | null>(null);
+  const [items, setItems] = useState<CartItem[]>(readCartFromStorage);
+  const [remoteCartId, setRemoteCartId] = useState<string | null>(
+    () => localStorage.getItem(REMOTE_CART_ID_KEY)
+  );
   const [loadingRemoteCart, setLoadingRemoteCart] = useState(false);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevCustomerIdRef = useRef<string | null>(null);
 
-  // ── Persist to sessionStorage on every change ──
+  // ── Persist cart items to localStorage on every change ──
   useEffect(() => {
-    writeCartToSession(items);
+    writeCartToStorage(items);
   }, [items]);
 
-  // ── Load remote cart when customer logs in ──
+  // ── Persist remoteCartId to localStorage ──
+  useEffect(() => {
+    if (remoteCartId) {
+      localStorage.setItem(REMOTE_CART_ID_KEY, remoteCartId);
+    } else {
+      localStorage.removeItem(REMOTE_CART_ID_KEY);
+    }
+  }, [remoteCartId]);
+
+  // ── Handle customer login/logout ──────────────────────────────────────────
   useEffect(() => {
     const customerId = customer?.id ?? null;
 
-    // Skip if customer hasn't changed
+    // Skip if same customer (no change)
     if (customerId === prevCustomerIdRef.current) return;
     prevCustomerIdRef.current = customerId;
 
     if (!customerId) {
-      // Customer logged out → clear cart
+      // Logout → wipe everything
       setItems([]);
       setRemoteCartId(null);
-      sessionStorage.removeItem(CART_KEY);
+      localStorage.removeItem(CART_KEY);
+      localStorage.removeItem(REMOTE_CART_ID_KEY);
       return;
     }
 
-    // Customer logged in → fetch their remote cart
+    // Login → reconcile local + remote carts
     let cancelled = false;
     setLoadingRemoteCart(true);
 
     (async () => {
       try {
+        // Snapshot local items before any async operations can mutate them
+        const localItems = readCartFromStorage();
+
         const remote = await fetchCustomerCart(customerId);
         if (cancelled) return;
 
         if (remote && remote.items.length > 0) {
+          // Remote cart exists with items — load full product details
           setRemoteCartId(remote.cartId);
 
-          // Load full product details for each remote cart item
           const loadedItems: CartItem[] = [];
           for (const row of remote.items) {
             try {
               const detail = await fetchShopProductDetail(row.productId);
               if (cancelled) return;
               if (detail) {
-                let priceHt = detail.product.priceHt;
+                let priceHt  = detail.product.priceHt;
                 let priceTtc = detail.product.priceTtc;
                 let variantLabel: string | undefined;
 
                 if (row.attributeId) {
                   const combo = detail.combinations.find(c => c.id === row.attributeId);
                   if (combo) {
-                    priceHt = detail.product.priceHt + combo.priceImpact;
+                    priceHt  = detail.product.priceHt + combo.priceImpact;
                     priceTtc = priceHt * (1 + detail.product.taxRate);
                     variantLabel = combo.label;
                   }
@@ -165,22 +193,51 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 });
               }
             } catch {
-              // Skip products that can't be loaded
               console.warn('[CartContext] Could not load product', row.productId);
             }
           }
 
           if (!cancelled && loadedItems.length > 0) {
-            setItems(loadedItems);
-            console.log('[CartContext] Loaded remote cart with', loadedItems.length, 'items');
+            if (localItems.length > 0) {
+              // Both have items → merge and sync back to keep remote up to date
+              const merged = mergeCartItems(loadedItems, localItems);
+              setItems(merged);
+              console.log('[CartContext] Merged local + remote cart:', merged.length, 'items');
+              // Sync merged cart to remote (no debounce — do it now)
+              const updatedId = await syncRemoteCart({
+                customerId,
+                items: merged,
+                existingCartId: remote.cartId,
+                secureKey: customer?.secureKey,
+              });
+              if (!cancelled && updatedId) setRemoteCartId(updatedId);
+            } else {
+              setItems(loadedItems);
+              console.log('[CartContext] Restored remote cart:', loadedItems.length, 'items');
+            }
           }
         } else {
-          // No remote cart — start fresh
-          setItems([]);
-          setRemoteCartId(null);
+          // No remote free cart — keep local items and create a brand-new PS cart.
+          // Do NOT reuse any stored cartId: fetchCustomerCart already confirmed there
+          // is no free cart, so any stored ID belongs to an already-ordered cart.
+          localStorage.removeItem(REMOTE_CART_ID_KEY);
+          if (localItems.length > 0) {
+            setItems(localItems);
+            console.log('[CartContext] No free remote cart — creating new PS cart with local items:', localItems.length);
+            const newCartId = await syncRemoteCart({
+              customerId,
+              items: localItems,
+              // existingCartId intentionally omitted → always POST a fresh cart
+              secureKey: customer?.secureKey,
+            });
+            if (!cancelled && newCartId) setRemoteCartId(newCartId);
+          } else {
+            setItems([]);
+            setRemoteCartId(null);
+          }
         }
       } catch (err) {
-        console.error('[CartContext] Failed to load remote cart:', err);
+        console.error('[CartContext] Failed to reconcile remote cart:', err);
       } finally {
         if (!cancelled) setLoadingRemoteCart(false);
       }
@@ -189,7 +246,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => { cancelled = true; };
   }, [customer]);
 
-  // ── Debounced remote sync ──
+  // ── Debounced remote sync (triggered by cart mutations) ──
   const scheduleSyncRef = useRef<((newItems: CartItem[]) => void) | undefined>(undefined);
 
   const scheduleSync = useCallback((newItems: CartItem[]) => {
@@ -201,19 +258,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         customerId: customer.id,
         items: newItems,
         existingCartId: remoteCartId ?? undefined,
+        secureKey: customer.secureKey,
       });
-      if (cartId) {
-        setRemoteCartId(cartId);
-      }
+      if (cartId) setRemoteCartId(cartId);
     }, 500);
   }, [customer, remoteCartId]);
 
-  // Keep ref in sync
+  // Keep ref up to date
   useEffect(() => {
     scheduleSyncRef.current = scheduleSync;
   }, [scheduleSync]);
 
-  // ── Cart operations ──
+  // ── Cart mutations ────────────────────────────────────────────────────────
 
   const addItem = (item: Omit<CartItem, 'qty'>, qty = 1) => {
     setItems(prev => {
@@ -250,18 +306,20 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  // Called after successful checkout — wipes everything cleanly
   const clear = () => {
     setItems([]);
     setRemoteCartId(null);
-    sessionStorage.removeItem(CART_KEY);
+    localStorage.removeItem(CART_KEY);
+    localStorage.removeItem(REMOTE_CART_ID_KEY);
   };
 
-  // ── Computed values ──
+  // ── Computed totals ────────────────────────────────────────────────────────
 
   const totalPriceHt = roundMoney(items.reduce((sum, i) => sum + i.priceHt * i.qty, 0));
-  const totalPrice = roundMoney(items.reduce((sum, i) => sum + i.priceTtc * i.qty, 0));
-  const totalTax = roundMoney(totalPrice - totalPriceHt);
-  const totalItems = items.reduce((sum, i) => sum + i.qty, 0);
+  const totalPrice   = roundMoney(items.reduce((sum, i) => sum + i.priceTtc * i.qty, 0));
+  const totalTax     = roundMoney(totalPrice - totalPriceHt);
+  const totalItems   = items.reduce((sum, i) => sum + i.qty, 0);
 
   return (
     <CartContext.Provider value={{

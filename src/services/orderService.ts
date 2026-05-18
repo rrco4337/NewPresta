@@ -31,10 +31,11 @@ export interface PSOrder {
   cartRows?: CartRow[];
 }
 
-// 📦 Les 3 statuts selon les spécifications J2
+// 📦 Les 4 statuts selon les spécifications J2 (avec LIVRÉ)
 export const PS_STATE_LABELS: Record<number, string> = {
   1:  '📦 Dans le panier',      // État panier (cart non validé)
   2:  '✅ Paiement effectué',    // Commande validée + paiement OK
+  5:  '🚚 Livré',                // Commande livrée
   6:  '❌ Annulé',               // Commande annulée
 };
 
@@ -42,6 +43,7 @@ export const PS_STATE_LABELS: Record<number, string> = {
 export const ALLOWED_PS_STATES = [
   { label: '📦 Dans le panier',      value: 1 },
   { label: '✅ Paiement effectué',   value: 2 },
+  { label: '🚚 Livré',               value: 5 },
   { label: '❌ Annulé',              value: 6 },
 ];
 
@@ -52,23 +54,33 @@ export function isTransitionAllowed(oldState: number, newState: number): boolean
     return true;
   }
   
-  // Règle 2: Payé (2) peut devenir annulé (6)
-  if (oldState === 2 && newState === 6) {
+  // Règle 2: Payé (2) peut devenir livré (5) ou annulé (6)
+  if (oldState === 2 && (newState === 5 || newState === 6)) {
     return true;
   }
   
-  // Règle 3: Annulé (6) peut redevenir payé (2) - cas rare mais possible
+  // Règle 3: Livré (5) peut devenir annulé (6) - cas de retour
+  if (oldState === 5 && newState === 6) {
+    return true;
+  }
+  
+  // Règle 4: Annulé (6) peut redevenir payé (2) - cas rare mais possible
   if (oldState === 6 && newState === 2) {
     return true;
   }
   
-  // Règle 4: Même état → pas de changement
+  // Règle 5: Même état → pas de changement
   if (oldState === newState) {
     return false;
   }
   
-  // Règle 5: TOUT VERS "dans le panier" (1) est INTERDIT
+  // Règle 6: TOUT VERS "dans le panier" (1) est INTERDIT
   if (newState === 1) {
+    return false;
+  }
+  
+  // Règle 7: TOUT VERS "livré" (5) depuis un état non autorisé
+  if (newState === 5 && oldState !== 2) {
     return false;
   }
   
@@ -79,8 +91,6 @@ export function isTransitionAllowed(oldState: number, newState: number): boolean
 // ==========================================
 // PRESTASHOP ORDERS
 // ==========================================
-
-
 
 async function fetchCustomerName(customerId: string): Promise<string> {
   try {
@@ -267,8 +277,6 @@ async function parseCartsXml(
   // Correction du filtre : on utilise un type assertion plus simple ici
   return carts.filter((c): c is NonNullable<typeof c> => c !== null);
 }
-// parseCartsXml retourne les paniers avec leur ID simple
-// orderService.ts
 
 export async function transformCartToOrder(order: PSOrder, newState: number): Promise<boolean> {
   try {
@@ -323,6 +331,10 @@ export async function updatePSOrderStatus(orderId: string, stateId: number): Pro
   // 🔒 Vérification supplémentaire avant envoi à l'API
   // On ne devrait jamais envoyer une transition vers panier (1)
   // car c'est interdit par isTransitionAllowed, mais sécurité supplémentaire
+  if (stateId === 1) {
+    console.error(`Tentative interdite: impossible de passer la commande ${orderId} en statut "panier" (1)`);
+    return false;
+  }
   
   try {
     const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -374,18 +386,22 @@ export async function deleteZombieCarts(orders: PSOrder[]): Promise<{ deleted: n
 export function getOrdersStats(orders: PSOrder[]) {
   const paniers = orders.filter(o => o.currentState === 1);
   const payees = orders.filter(o => o.currentState === 2);
+  const livrees = orders.filter(o => o.currentState === 5);
   const annulees = orders.filter(o => o.currentState === 6);
   
   const montantTotalPaye = payees.reduce((sum, o) => sum + o.totalPaid, 0);
   const montantTotalPaniers = paniers.reduce((sum, o) => sum + o.totalPaid, 0);
+  const montantTotalLivrees = livrees.reduce((sum, o) => sum + o.totalPaid, 0);
   
   return {
     total: orders.length,
     paniers: paniers.length,
     payees: payees.length,
+    livrees: livrees.length,
     annulees: annulees.length,
     montantTotalPaye,
     montantTotalPaniers,
+    montantTotalLivrees,
   };
 }
 

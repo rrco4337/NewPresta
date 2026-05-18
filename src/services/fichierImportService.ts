@@ -465,59 +465,74 @@ async function getOrCreateOptionValue(optionId: string, valueName: string): Prom
   return promise;
 }
 
-async function importFichier1(
-  rows: any[],
-  cols: any,
-  onProgress?: (current: number, total: number, label: string) => void
+export async function importFichier1(
+  file: File,
+  onProgress?: FichierProgressCallback,
 ): Promise<FichierImportResult[]> {
+  // Réinitialisation des caches
+  categoryCache        = new Map();
+  categoryPending      = new Map();
+  categoryLoadPromise  = null;
+  productRefCache      = new Map();
+  taxRateCache         = new Map();
+  productDateCache     = new Map();
+ 
+  const lines  = parseCsvContent(await file.text());
+  const header = lines[0] ?? [];
+  const cols   = resolveFichier1Columns(header);
+  const rows   = lines.slice(1)
+    .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
+    .filter(({ row }) => (row[cols.nomIdx] ?? '').trim() !== '');
+ 
   // Tableau pré-alloué pour conserver l'ordre CSV malgré la concurrence
   const results: FichierImportResult[] = new Array(rows.length);
   let done = 0;
-
+ 
   await runConcurrent(
     rows,
     async ({ row, csvLine }, i) => {
-      const nom = row[cols.nomIdx] ?? '';
-      const reference = row[cols.referenceIdx] ?? '';
-      const dateValue = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
-      const prix_ttc_str = row[cols.prixTtcIdx] ?? '';
-      const taxe_str = row[cols.taxeIdx] ?? '';
-      const categorie = row[cols.categorieIdx] ?? '';
+      const nom          = row[cols.nomIdx]      ?? '';
+      const reference    = row[cols.referenceIdx] ?? '';
+      const dateValue    = cols.dateIdx >= 0 ? (row[cols.dateIdx] ?? '') : '';
+      const prix_ttc_str = row[cols.prixTtcIdx]   ?? '';
+      const taxe_str     = row[cols.taxeIdx]       ?? '';
+      const categorie    = row[cols.categorieIdx]  ?? '';
       const prix_achat_str = row[cols.prixAchatIdx] ?? '';
-      const label = `${nom} (${reference})`;
-
+      const label        = `${nom} (${reference})`;
+ 
       onProgress?.(done, rows.length, label);
-
+ 
       try {
-        const taxRate = parseTaxRate(taxe_str ?? '0%');
-        const ttc = parseFrenchNumber(prix_ttc_str ?? '0');
-        const ht = ttcToHt(ttc, taxRate);
+        const taxRate        = parseTaxRate(taxe_str ?? '0%');
+        const ttc            = parseFrenchNumber(prix_ttc_str ?? '0');
+        const ht             = ttcToHt(ttc, taxRate);
         const wholesalePrice = parseFrenchNumber(prix_achat_str ?? '0');
-
+ 
         // findOrCreateCategory et ensureTaxRulesGroupIdByRate sont déjà sécurisés
         // contre les appels concurrents (pending map + chargement unique)
-        const catId = await findOrCreateCategory(categorie ?? 'Général');
+        const catId      = await findOrCreateCategory(categorie ?? 'Général');
         const taxGroupId = await ensureTaxRulesGroupIdByRate(taxRate);
-
+ 
         if (!taxGroupId) {
           throw new Error(`Aucun groupe de taxe pour le taux ${taxe_str ?? '0%'}`);
         }
-
+ 
         taxRateCache.set(reference, taxRate);
-
+ 
         // Parsing de la date
         const parsedDate = dateValue ? parseDateFlexible(dateValue) : null;
-        const dateIso = parsedDate
-          ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} ${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
+        const dateIso    = parsedDate
+          ? `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, '0')}-${String(parsedDate.getDate()).padStart(2, '0')} `
+            + `${String(parsedDate.getHours()).padStart(2, '0')}:${String(parsedDate.getMinutes()).padStart(2, '0')}:${String(parsedDate.getSeconds()).padStart(2, '0')}`
           : '';
-
+ 
         if (reference && dateIso) {
           productDateCache.set(reference, dateIso);
           console.log(`[Fichier1] Date stockée pour ${reference}: ${dateIso}`);
         }
-
+ 
         const dateTag = dateIso ? `<available_date><![CDATA[${dateIso}]]></available_date>` : '';
-
+ 
         const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <product>
@@ -540,7 +555,7 @@ async function importFichier1(
     </associations>
   </product>
 </prestashop>`;
-
+ 
         const id = await postXml('/products', xml);
         productRefCache.set(reference, id);
         results[i] = { label, success: true, id, lineNumber: csvLine };
@@ -553,12 +568,12 @@ async function importFichier1(
           lineNumber: csvLine,
         };
       }
-
+ 
       onProgress?.(++done, rows.length, label);
     },
-    5 // concurrence ×5
+    5, // concurrence ×5
   );
-
+ 
   return results;
 }
 // ==========================================
@@ -788,13 +803,14 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
 
 const STATUS_MAP = {
   CART_ONLY: 'dans le panier',
-  PAID: 'paiement accepté',
-  CANCELLED: 'annulé'
+  PAID:      'paiement accepté',
+  CANCELLED: 'annulé',
+  DELIVERED: 'livré',            // ← nouveau
 } as const;
 
-// IDs standards PrestaShop
 const PS_STATE_PAYMENT_ACCEPTED = 2;
-const PS_STATE_CANCELED = 6;
+const PS_STATE_CANCELED         = 6;
+const PS_STATE_DELIVERED        = 5;  // ← nouveau (ID standard PrestaShop)
 
 interface ImportCustomer {
   id: string;
@@ -949,7 +965,7 @@ export async function importFichier3(
         let importType = 'Panier';
  
         // 5. Commande si statut le demande
-        if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
+       if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED || etat === STATUS_MAP.DELIVERED) {
           const orderId = await createPSOrder({
             customerId: customer.id,
             addressId,
@@ -963,7 +979,9 @@ export async function importFichier3(
           console.log(`Commande créée ID: ${orderId}, Date: ${finalDate}`);
  
           const psState = etat === STATUS_MAP.PAID
-            ? PS_STATE_PAYMENT_ACCEPTED
+          ? PS_STATE_PAYMENT_ACCEPTED
+          : etat === STATUS_MAP.DELIVERED
+            ? PS_STATE_DELIVERED
             : PS_STATE_CANCELED;
  
           const statusXml = `<?xml version="1.0" encoding="UTF-8"?>

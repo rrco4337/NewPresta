@@ -33,6 +33,7 @@ function orderStatusClass(state: number): string {
   // Nouvel état "dans le panier" (exemple: state = 1)
   if (state === 1) return 'status-badge--cart';
   if (state === 2) return 'status-badge--paid';
+  if (state === 5) return 'status-badge--delivered';  // ← NOUVEAU : livré
   if (state === 8) return 'status-badge--error';
   if (state === 6) return 'status-badge--cancelled';
   return 'status-badge--default';
@@ -77,8 +78,12 @@ const OrderList: React.FC = () => {
     if (oldState === 1 && (newState === 2 || newState === 6)) {
       return true;
     }
-    // paiement effectué (2) → annulé (6) : OK
-    if (oldState === 2 && newState === 6) {
+    // paiement effectué (2) → livré (5) ou annulé (6) : OK
+    if (oldState === 2 && (newState === 5 || newState === 6)) {
+      return true;
+    }
+    // livré (5) → annulé (6) : OK (rare mais possible pour retour)
+    if (oldState === 5 && newState === 6) {
       return true;
     }
     // annulé (6) → paiement effectué (2) : rare mais possible
@@ -110,52 +115,51 @@ const OrderList: React.FC = () => {
     setPendingChange({ order, newValue: newState, oldValue: oldState });
   };
 
-  // Dans ton composant OrderList.tsx
+  const handleConfirmChange = async () => {
+    if (!pendingChange) return;
+    setApplying(true);
+    const { order, newValue, oldValue } = pendingChange;
 
-const handleConfirmChange = async () => {
-  if (!pendingChange) return;
-  setApplying(true);
-  const { order, newValue, oldValue } = pendingChange;
-
-  try {
-    let success = false;
-    
-    // CAS SPÉCIFIQUE : Panier (1) -> Commande (2 ou 6)
-    if (oldValue === 1 && (newValue === 2 || newValue === 6)) {
-      // Ici, on appelle une méthode spécifique du service
-      // car transformer un panier nécessite souvent de créer l'objet Order
-      success = await transformCartToOrder(order, newValue);
-    } else {
-      // CAS CLASSIQUE : Changement de statut d'une commande existante
-      success = await updatePSOrderStatus(order.id, newValue);
-    }
-
-    if (success) {
-      // Enregistrer les mouvements de stock
-      const ref = order.reference || `#${order.id}`;
-      if (newValue === 2) {
-        // Sortie stock : commande validée
-        const rows = order.cartRows?.length
-          ? order.cartRows
-          : await fetchOrderRows(order.id);
-        stockService.recordOrderMovements(rows, ref, 'sortie').catch(() => {});
-      } else if (newValue === 6 && oldValue === 2) {
-        // Entrée stock : commande annulée (retour)
-        const rows = await fetchOrderRows(order.id);
-        stockService.recordOrderMovements(rows, ref, 'entree').catch(() => {});
+    try {
+      let success = false;
+      
+      // CAS SPÉCIFIQUE : Panier (1) -> Commande (2 ou 6)
+      if (oldValue === 1 && (newValue === 2 || newValue === 6)) {
+        success = await transformCartToOrder(order, newValue);
+      } else {
+        // CAS CLASSIQUE : Changement de statut d'une commande existante
+        success = await updatePSOrderStatus(order.id, newValue);
       }
 
-      // On rafraîchit la liste complète car l'ID de la commande
-      // risque d'avoir changé (PrestaShop crée un nouvel ID Order différent du Cart ID)
-      await load();
+      if (success) {
+        // Enregistrer les mouvements de stock
+        const ref = order.reference || `#${order.id}`;
+        if (newValue === 2) {
+          // Sortie stock : commande validée (paiement accepté)
+          const rows = order.cartRows?.length
+            ? order.cartRows
+            : await fetchOrderRows(order.id);
+          stockService.recordOrderMovements(rows, ref, 'sortie').catch(() => {});
+        } else if (newValue === 5 && oldValue === 2) {
+          // Sortie stock confirmée : commande livrée (on pourrait ne pas faire de mouvement supplémentaire)
+          // Ou optionnellement : log de livraison
+          console.log(`[Livraison] Commande ${ref} marquée comme livrée`);
+        } else if (newValue === 6 && (oldValue === 2 || oldValue === 5)) {
+          // Entrée stock : commande annulée (retour)
+          const rows = await fetchOrderRows(order.id);
+          stockService.recordOrderMovements(rows, ref, 'entree').catch(() => {});
+        }
+
+        // On rafraîchit la liste complète
+        await load();
+      }
+    } catch (err) {
+      setError("L'opération a échoué.");
+    } finally {
+      setApplying(false);
+      setPendingChange(null);
     }
-  } catch (err) {
-    setError("L'opération a échoué.");
-  } finally {
-    setApplying(false);
-    setPendingChange(null);
-  }
-};
+  };
 
   const handleCancelChange = () => setPendingChange(null);
 
@@ -187,6 +191,9 @@ const handleConfirmChange = async () => {
   };
 
   // ── Rendu ─────────────────────────────────────────────────────────────────────
+  const paidCount = orders.filter(o => o.currentState === 2).length;
+  const deliveredCount = orders.filter(o => o.currentState === 5).length;
+  const cancelledCount = orders.filter(o => o.currentState === 6).length;
 
   return (
     <div className="orders-page">
@@ -230,7 +237,7 @@ const handleConfirmChange = async () => {
           </button>
         )}
         <span className="orders-count">
-          {orders.length} élément(s) ({orders.filter(o => o.currentState === 1).length} panier(s), {orders.filter(o => o.currentState === 2).length} payée(s), {orders.filter(o => o.currentState === 6).length} annulée(s))
+          {orders.length} élément(s) ({orders.filter(o => o.currentState === 1).length} panier(s), {paidCount} payée(s), {deliveredCount} livrée(s), {cancelledCount} annulée(s))
         </span>
       </div>
 

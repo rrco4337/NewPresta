@@ -387,14 +387,18 @@ export async function importFichier1(
       const ht       = ttcToHt(ttc, taxRate);
       const wholesalePrice = parseFrenchNumber(prix_achat_str ?? '0');
       const catId    = await findOrCreateCategory(categorie ?? 'Général');
-      const taxGroupId = await ensureTaxRulesGroupIdByRate(taxRate);
-      if (!taxGroupId) {
-        console.error('Tax group not found for rate', {
-          label,
-          rate: taxRate,
-          taxLabel: taxe_str,
-        });
-        throw new Error(`Aucun groupe de taxe pour le taux ${taxe_str ?? '0%'}`);
+      let taxGroupId: number = 0;
+      if (taxRate > 0) {
+        const resolved = await ensureTaxRulesGroupIdByRate(taxRate);
+        if (resolved == null) {
+          console.error('Tax group not found for rate', {
+            label,
+            rate: taxRate,
+            taxLabel: taxe_str,
+          });
+          throw new Error(`Aucun groupe de taxe pour le taux ${taxe_str}`);
+        }
+        taxGroupId = resolved;
       }
       taxRateCache.set(reference, taxRate);
 

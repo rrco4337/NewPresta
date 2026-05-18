@@ -200,3 +200,10 @@
 
 .btn-danger { background: #ef4444; color: #fff; }
 .btn-danger:hover:not(:disabled) { background: #dc2626; }
+
+.status-badge--delivered {
+  background-color: #28a745;
+  color: white;
+}
+
+

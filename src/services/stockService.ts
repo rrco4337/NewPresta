@@ -7,13 +7,11 @@ import type { AxiosInstance } from 'axios';
 
 /** Une ligne de stock unitaire — produit simple ou déclinaison */
 export interface StockLine {
-  /** Clé unique : `${productId}_${combinationId ?? '0'}` */
   key: string;
   productId: string;
   productName: string;
   productType: 'simple' | 'combinations';
   combinationId: string | null;
-  /** Libellé lisible de la déclinaison, ex. "Bleu / M". Vide pour produit simple. */
   combinationLabel: string;
   stockId: string;
   quantity: number;
@@ -33,63 +31,41 @@ export interface StockMovement {
   quantityBefore: number;
   quantityAdded: number;
   quantityAfter: number;
-  date: string; // ISO
+  date: string;
   note: string;
 }
 
+/** Stock par catégorie */
+export interface CategoryStock {
+  categoryId: string;
+  categoryName: string;
+  physicalQuantity: number;
+  reservedQuantity: number;
+  availableQuantity: number;
+}
+
 // ==========================================
-// 2. AXIOS
+// 2. AXIOS INSTANCES
 // ==========================================
+
 const api: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
   headers: { 'Content-Type': 'application/xml', Accept: 'application/xml' },
 });
 
-// Client vers stockapi.php (fichier standalone à la racine PS, pas de module requis)
 const moduleApi: AxiosInstance = axios.create({
   baseURL: import.meta.env.VITE_PRESTASHOP_URL || 'http://127.0.0.1:8080',
   headers: {
     'Content-Type': 'application/xml',
-    'Accept':       'application/xml',
-    'X-Api-Key':    import.meta.env.VITE_STOCKAPI_KEY ?? '',
+    'Accept': 'application/xml',
+    'X-Api-Key': import.meta.env.VITE_STOCKAPI_KEY ?? '',
   },
 });
 
-async function sendMovementToAPI(movement: {
-  id: string;
-  key: string;
-  id_product: number;
-  product_name: string;
-  combination_label: string;
-  id_stock_available: number;
-  quantity_before: number;
-  quantity_added: number;
-  quantity_after: number;
-  note: string;
-  date?: string;
-}): Promise<void> {
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<prestashop>
-  <movement>
-    <id><![CDATA[${movement.id}]]></id>
-    <key><![CDATA[${movement.key}]]></key>
-    <id_product><![CDATA[${movement.id_product}]]></id_product>
-    <product_name><![CDATA[${movement.product_name}]]></product_name>
-    <combination_label><![CDATA[${movement.combination_label}]]></combination_label>
-    <id_stock_available><![CDATA[${movement.id_stock_available}]]></id_stock_available>
-    <quantity_before><![CDATA[${movement.quantity_before}]]></quantity_before>
-    <quantity_added><![CDATA[${movement.quantity_added}]]></quantity_added>
-    <quantity_after><![CDATA[${movement.quantity_after}]]></quantity_after>
-    <date><![CDATA[${movement.date || new Date().toISOString()}]]></date>
-    <note><![CDATA[${movement.note}]]></note>
-  </movement>
-</prestashop>`;
+// ==========================================
+// 3. HELPERS XML GÉNÉRIQUES
+// ==========================================
 
-  await moduleApi.post('/stockapi.php?action=add_movement', xml);
-}
-// ==========================================
-// 3. HELPERS XML
-// ==========================================
 function parseXML(xmlString: string): unknown {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xmlString, 'text/xml');
@@ -114,6 +90,30 @@ function parseXML(xmlString: string): unknown {
   return walk(doc.documentElement);
 }
 
+function getRoot(parsed: unknown): Record<string, unknown> | null {
+  if (!isObj(parsed)) return null;
+  const ps = isObj(parsed.prestashop) ? parsed.prestashop : parsed;
+  return isObj(ps) ? ps : null;
+}
+
+function isObj(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null;
+}
+
+function getLang(field: unknown): string {
+  if (!isObj(field)) return typeof field === 'string' ? field : '';
+  const lang = field.language;
+  if (!lang) return '';
+  const target = Array.isArray(lang) ? lang[0] : lang;
+  if (!isObj(target)) return typeof target === 'string' ? target : '';
+  return String((target as any)._cdata ?? (target as any)._text ?? target ?? '');
+}
+
+function toArray<T>(v: T | T[] | undefined | null): T[] {
+  if (v == null) return [];
+  return Array.isArray(v) ? v : [v];
+}
+
 function buildStockUpdateXml(
   idProduct: string | number,
   idProductAttribute: string | number,
@@ -133,38 +133,13 @@ function parseStockUpdateResponse(xmlString: string): {
   error?: string;
 } {
   const parsed = parseXML(xmlString) as any;
-  const node   = parsed?.prestashop?.stock_update ?? parsed?.stock_update;
+  const node = parsed?.prestashop?.stock_update ?? parsed?.stock_update;
   if (!node) return { success: false, newQty: 0, error: 'Réponse XML invalide' };
   return {
     success: String(node.success ?? '0') === '1',
-    newQty:  parseInt(String(node.new_quantity ?? '0'), 10),
-    error:   node.error ? String(node.error) : undefined,
+    newQty: parseInt(String(node.new_quantity ?? '0'), 10),
+    error: node.error ? String(node.error) : undefined,
   };
-}
-
-function getRoot(parsed: unknown): Record<string, unknown> | null {
-  if (!isObj(parsed)) return null;
-  const ps = isObj(parsed.prestashop) ? parsed.prestashop : parsed;
-  return isObj(ps) ? ps : null;
-}
-
-function isObj(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null;
-}
-
-function getLang(field: unknown): string {
-  if (!isObj(field)) return typeof field === 'string' ? field : '';
-  const lang = field.language;
-  if (!lang) return '';
-  const target = Array.isArray(lang) ? lang[0] : lang;
-  if (!isObj(target)) return typeof target === 'string' ? target : '';
-  // Gère _cdata (parfois injecté), _text, ou string direct
-  return String((target as any)._cdata ?? (target as any)._text ?? target ?? '');
-}
-
-function toArray<T>(v: T | T[] | undefined | null): T[] {
-  if (v == null) return [];
-  return Array.isArray(v) ? v : [v];
 }
 
 // ==========================================
@@ -176,10 +151,9 @@ interface RawProduct {
   name: string;
   reference: string;
   ean13: string;
-  /** 'simple' | 'combinations' | 'virtual' | 'pack' */
   type: string;
   active: string;
-  combinationIds: string[]; 
+  combinationIds: string[];
 }
 
 interface RawCombination {
@@ -197,19 +171,6 @@ interface RawStockAvailable {
   quantity: number;
 }
 
-function extractId(field: unknown): string {
-  if (!field) return '';
-  if (typeof field === 'string' || typeof field === 'number') return String(field);
-  if (typeof field === 'object') {
-    const obj = field as Record<string, unknown>;
-    // Most common PS shapes
-    return String(
-      obj['#text'] ?? obj['_cdata'] ?? obj['@_href']?.toString().split('/').pop() ?? ''
-    );
-  }
-  return '';
-}
-
 async function fetchProducts(): Promise<Map<string, RawProduct>> {
   const res = await api.get('/products?display=full');
   const root = getRoot(parseXML(res.data));
@@ -222,28 +183,10 @@ async function fetchProducts(): Promise<Map<string, RawProduct>> {
     const id = String(p.id ?? '');
     if (!id) continue;
 
-    // ── Détection du type ──────────────────────────────────────────────
-    // PS peut renvoyer : "combinations", "configurable", "1", "2"…
-    // On s'appuie aussi sur la présence de l'association "combinations"
-    const rawType = String(
-      (p as any).type ?? (p as any).product_type ?? ''
-    ).toLowerCase();
-
-    const comboAssoc = toArray(
-      (p as any).associations?.combinations?.combination
-    );
-
-    const isCombinations =
-      rawType === 'combinations' ||
-      rawType === 'configurable' ||
-      rawType === '2' || // valeur numérique PS 1.7/8
-      comboAssoc.length > 0;
-
-    // IDs de déclinaisons extraits des associations (plus fiable que le
-    // filtre global sur /combinations)
-    const combinationIds = comboAssoc
-      .map((c: any) => String(isObj(c) ? (c.id ?? '') : c))
-      .filter(Boolean);
+    const rawType = String((p as any).type ?? (p as any).product_type ?? '').toLowerCase();
+    const comboAssoc = toArray((p as any).associations?.combinations?.combination);
+    const isCombinations = rawType === 'combinations' || rawType === 'configurable' || rawType === '2' || comboAssoc.length > 0;
+    const combinationIds = comboAssoc.map((c: any) => String(isObj(c) ? (c.id ?? '') : c)).filter(Boolean);
 
     map.set(id, {
       id,
@@ -266,14 +209,9 @@ async function fetchCombinations(): Promise<RawCombination[]> {
     const raw = toArray((container as any)?.combination);
 
     return raw.filter(isObj).map((c: any) => {
-      // Extrait les IDs des valeurs d'options (attributs: couleur, taille…)
-      const pov = isObj(c.associations?.product_option_values)
-        ? c.associations.product_option_values
-        : null;
+      const pov = isObj(c.associations?.product_option_values) ? c.associations.product_option_values : null;
       const ovItems = toArray((pov as any)?.product_option_value);
-      const optionValueIds = ovItems
-        .map((ov: any) => String(isObj(ov) ? (ov.id ?? '') : ov))
-        .filter(Boolean);
+      const optionValueIds = ovItems.map((ov: any) => String(isObj(ov) ? (ov.id ?? '') : ov)).filter(Boolean);
 
       return {
         id: String(c.id ?? ''),
@@ -281,10 +219,9 @@ async function fetchCombinations(): Promise<RawCombination[]> {
         reference: String(c.reference ?? ''),
         ean13: String(c.ean13 ?? ''),
         optionValueIds,
-      } as RawCombination;
+      };
     }).filter(c => c.id && c.id_product);
-  } catch (err) {
-    console.warn('[stockService] /combinations introuvable ou vide', err);
+  } catch {
     return [];
   }
 }
@@ -318,15 +255,277 @@ async function fetchOptionValueNames(): Promise<Map<string, string>> {
       if (id) map.set(id, name);
     }
     return map;
-  } catch (err) {
-    console.warn('[stockService] /product_option_values introuvable', err);
+  } catch {
     return new Map();
   }
 }
 
+async function sendMovementToAPI(movement: {
+  id: string;
+  key: string;
+  id_product: number;
+  product_name: string;
+  combination_label: string;
+  id_stock_available: number;
+  quantity_before: number;
+  quantity_added: number;
+  quantity_after: number;
+  note: string;
+  date?: string;
+}): Promise<void> {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop>
+  <movement>
+    <id><![CDATA[${movement.id}]]></id>
+    <key><![CDATA[${movement.key}]]></key>
+    <id_product><![CDATA[${movement.id_product}]]></id_product>
+    <product_name><![CDATA[${movement.product_name}]]></product_name>
+    <combination_label><![CDATA[${movement.combination_label}]]></combination_label>
+    <id_stock_available><![CDATA[${movement.id_stock_available}]]></id_stock_available>
+    <quantity_before><![CDATA[${movement.quantity_before}]]></quantity_before>
+    <quantity_added><![CDATA[${movement.quantity_added}]]></quantity_added>
+    <quantity_after><![CDATA[${movement.quantity_after}]]></quantity_after>
+    <date><![CDATA[${movement.date || new Date().toISOString()}]]></date>
+    <note><![CDATA[${movement.note}]]></note>
+  </movement>
+</prestashop>`;
+
+  await moduleApi.post('/stockapi.php?action=add_movement', xml);
+}
+
 // ==========================================
-// 5. MOUVEMENTS (stockage local)
+// 5. STOCK PAR CATÉGORIE - HELPERS
 // ==========================================
+function parseCategoriesXml(
+  xmlString: string
+): Array<{ id: string; name: string; depth: number }> {
+
+  const doc = new DOMParser().parseFromString(xmlString, 'text/xml');
+
+  const categories: Array<{
+    id: string;
+    name: string;
+    depth: number;
+  }> = [];
+
+  // IMPORTANT :
+  // On récupère UNIQUEMENT les catégories racines
+  // et pas les <category> imbriqués dans associations
+  const categoriesRoot = doc.querySelector('categories');
+
+  if (!categoriesRoot) {
+    return [];
+  }
+
+  const categoryEls = Array.from(categoriesRoot.children)
+    .filter((el) => el.tagName === 'category');
+
+  for (const el of categoryEls) {
+    const id =
+      el.querySelector(':scope > id')
+        ?.textContent
+        ?.trim() ?? '';
+
+    const name =
+      el.querySelector(':scope > name')
+        ?.textContent
+        ?.trim() ?? '';
+
+    const depth = parseInt(
+      el.querySelector(':scope > level_depth')
+        ?.textContent
+        ?.trim() ?? '0',
+      10
+    );
+
+    if (id && name) {
+      categories.push({
+        id,
+        name,
+        depth,
+      });
+    }
+  }
+
+  return categories;
+}
+
+async function parseProductsWithStockXml(xmlString: string): Promise<Array<{
+  id: string;
+  name: string;
+  categoryDefaultId: string;
+  physicalQuantity: number;
+  outOfStock: boolean;
+}>> {
+  const doc = new DOMParser().parseFromString(xmlString, 'text/xml');
+  const products: Array<{
+    id: string;
+    name: string;
+    categoryDefaultId: string;
+    physicalQuantity: number;
+    outOfStock: boolean;
+  }> = [];
+
+  // Chercher les produits dans différentes structures possibles
+  let productEls = doc.querySelectorAll('product');
+  
+  // Si pas trouvé, essayer une autre structure
+  if (productEls.length === 0) {
+    productEls = doc.querySelectorAll('prestashop product');
+  }
+
+  for (const el of productEls) {
+    const id = el.querySelector('id')?.textContent?.trim() ?? '';
+    const name = el.querySelector('name')?.textContent?.trim() ?? '';
+    
+    // Chercher id_category_default dans différentes structures
+   const categoryDefaultId =
+  el.querySelector('id_category_default')
+    ?.textContent
+    ?.trim() ?? '';
+
+    if (!id || !categoryDefaultId) continue;
+
+    try {
+      // Récupérer les infos de stock détaillées pour ce produit
+      const stockRes = await api.get(`/stock_availables?filter[id_product]=[${id}]&display=full`);
+      const stockDoc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
+      
+      let physicalQuantity = 0;
+     const stockEls = stockDoc.querySelectorAll('stock_available');
+
+ stockEls.forEach((stockEl) => {
+  const attrId = stockEl.querySelector('id_product_attribute')
+    ?.textContent?.trim() ?? '0';
+  const qty = parseInt(
+    stockEl.querySelector('quantity')?.textContent?.trim() ?? '0',
+    10
+  );
+  const hasMultipleEntries = stockEls.length > 1;
+  if (hasMultipleEntries && attrId === '0') return;
+
+  physicalQuantity += qty;
+ 
+  });
+        
+      const outOfStock = el.querySelector('out_of_stock')?.textContent?.trim() === '1';
+      
+      products.push({
+        id,
+        name,
+        categoryDefaultId,
+        physicalQuantity,
+        outOfStock,
+      });
+    } catch (err) {
+      console.warn(`Impossible de récupérer le stock pour le produit ${id}`);
+      products.push({
+        id,
+        name,
+        categoryDefaultId,
+        physicalQuantity: 0,
+        outOfStock: false,
+      });
+    }
+  }
+  
+  return products;
+}
+
+async function getReservedQuantitiesByProductStatic(ordersXml: string): Promise<Map<string, number>> {
+  const reservedMap = new Map<string, number>();
+  const doc = new DOMParser().parseFromString(ordersXml, 'text/xml');
+
+  const orders = Array.from(doc.querySelectorAll('order'));
+
+  for (const order of orders) {
+    const currentState = parseInt(order.querySelector('current_state')?.textContent?.trim() ?? '0', 10);
+
+    // Seules les commandes non livrées (état 1 ou 2) réservent du stock
+    if (currentState !== 1 && currentState !== 2) continue;
+
+    const orderId = order.querySelector('id')?.textContent?.trim();
+    if (!orderId) continue;
+
+    try {
+      const orderDetailsRes = await api.get(`/orders/${orderId}?display=full`);
+      const orderDoc = new DOMParser().parseFromString(orderDetailsRes.data, 'text/xml');
+
+      const orderRows = orderDoc.querySelectorAll('order_detail, order_row');
+
+      orderRows.forEach((row) => {
+        const productId = row.querySelector('product_id')?.textContent?.trim() ?? '';
+        const quantity = parseInt(row.querySelector('product_quantity')?.textContent?.trim() ?? '0', 10);
+
+        if (productId && quantity > 0) {
+          const currentReserved = reservedMap.get(productId) || 0;
+          reservedMap.set(productId, currentReserved + quantity);
+        }
+      });
+    } catch (err) {
+      console.warn(`Impossible de récupérer les détails de la commande ${orderId}`);
+    }
+  }
+
+  return reservedMap;
+}
+
+async function getStockByCategoryStatic(): Promise<CategoryStock[]> {
+  try {
+    // 1️⃣ Récupérer toutes les catégories
+    const categoriesRes = await api.get('/categories?display=full');
+    const categories = parseCategoriesXml(categoriesRes.data);
+
+    // 2️⃣ Récupérer tous les produits (sans filtre display complexe)
+    const productsRes = await api.get('/products?display=full');
+    const products = await parseProductsWithStockXml(productsRes.data);
+
+    // 3️⃣ Récupérer toutes les commandes en cours
+    const ordersRes = await api.get('/orders?display=full');
+    const reservedQuantities = await getReservedQuantitiesByProductStatic(ordersRes.data);
+
+    // 4️⃣ Créer un map des stocks par catégorie
+    const categoryStockMap = new Map<string, CategoryStock>();
+
+    for (const cat of categories) {
+      categoryStockMap.set(cat.id, {
+        categoryId: cat.id,
+        categoryName: cat.name,
+        physicalQuantity: 0,
+        reservedQuantity: 0,
+        availableQuantity: 0,
+      });
+    }
+
+    // 5️⃣ Agréger les stocks par catégorie
+    for (const product of products) {
+      const catId = product.categoryDefaultId;
+      const stock = categoryStockMap.get(catId);
+
+      if (stock) {
+     const reserved = reservedQuantities.get(product.id) || 0;
+// quantity PS = physique - réservé → physique réel = quantity + réservé
+stock.physicalQuantity += product.physicalQuantity + reserved;
+stock.reservedQuantity += reserved;
+stock.availableQuantity = stock.physicalQuantity - stock.reservedQuantity;
+      }
+    }
+
+    // 6️⃣ Convertir en tableau et trier
+    const result = Array.from(categoryStockMap.values())
+      .filter(cat => cat.physicalQuantity > 0 || cat.reservedQuantity > 0)
+      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
+
+    return result;
+  } catch (error) {
+    console.error('Erreur lors de la récupération des stocks par catégorie:', error);
+    return [];
+  }
+}
+// ==========================================
+// 6. STOCKAGE LOCAL DES MOUVEMENTS
+// ==========================================
+
 const MOVEMENTS_KEY = 'ps_stock_movements_v1';
 const MAX_MOVEMENTS = 1000;
 
@@ -350,15 +549,10 @@ function writeMovement(m: StockMovement): void {
 }
 
 // ==========================================
-// 6. SERVICE PUBLIC
+// 7. SERVICE PUBLIC EXPORTÉ
 // ==========================================
-export const stockService = {
 
-  /**
-   * Récupère toutes les lignes de stock :
-   * - Un enregistrement par produit simple
-   * - Un enregistrement par déclinaison pour les produits à combinaisons
-   */
+export const stockService = {
   getAllStockLines: async (): Promise<StockLine[]> => {
     const [products, combinations, stockAvailables, optionValues] = await Promise.all([
       fetchProducts(),
@@ -367,7 +561,6 @@ export const stockService = {
       fetchOptionValueNames(),
     ]);
 
-    // Index rapide : `${id_product}_${id_product_attribute}` → stock
     const stockMap = new Map<string, RawStockAvailable>();
     for (const s of stockAvailables) {
       stockMap.set(`${s.id_product}_${s.id_product_attribute}`, s);
@@ -376,18 +569,16 @@ export const stockService = {
     const lines: StockLine[] = [];
 
     for (const [productId, product] of products) {
-      // Filtre produits inactifs
       if (product.active !== '1') continue;
 
       const isCombinations = product.type === 'combinations';
 
       if (isCombinations) {
-          const productComboIds = new Set(product.combinationIds);
-  const combos = combinations.filter(c =>
-    c.id_product === productId &&
-    (productComboIds.size === 0 || productComboIds.has(c.id))
-  );
-
+        const productComboIds = new Set(product.combinationIds);
+        const combos = combinations.filter(c =>
+          c.id_product === productId &&
+          (productComboIds.size === 0 || productComboIds.has(c.id))
+        );
 
         for (const combo of combos) {
           const stock = stockMap.get(`${productId}_${combo.id}`);
@@ -432,28 +623,17 @@ export const stockService = {
     return lines;
   },
 
-  /**
-   * Ajoute une quantité au stock d'une ligne et enregistre le mouvement.
-   * Retourne la ligne mise à jour.
-   */
   addStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
-  if (qty <= 0) throw new Error('La quantité doit être > 0');
+    if (qty <= 0) throw new Error('La quantité doit être > 0');
 
-  // 1. Mettre à jour ps_stock_available (via stockapi.php)
-  const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, qty);
-  const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
+    const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, qty);
+    const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
+    const result = parseStockUpdateResponse(rawXml);
+    if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
 
-  const result = parseStockUpdateResponse(rawXml);
-  if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
+    const newQty = result.newQty;
 
-  const newQty = result.newQty;
-
-  // 2. Écrire dans ps_stock_mvt (API native PS) pour que le backoffice voit le mouvement
-  const movementId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-  
-  // Construire le XML pour l'API native
-  // 2. Écrire dans ps_stock_mvt (API native PS)
-const nativeXml = `<?xml version="1.0" encoding="UTF-8"?>
+    const nativeXml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_mvt>
     <id_employee><![CDATA[1]]></id_employee>
@@ -466,48 +646,41 @@ const nativeXml = `<?xml version="1.0" encoding="UTF-8"?>
   </stock_mvt>
 </prestashop>`;
 
-try {
-  const nativeResponse = await api.post('/stock_movements', nativeXml);
-  console.log('✅ Mouvement enregistré dans backoffice PS', nativeResponse.data);
-} catch (err: any) {
-  console.error('❌ Erreur API native:', err.response?.status, err.response?.data);
-}
+    try {
+      await api.post('/stock_movements', nativeXml);
+    } catch (err: any) {
+      console.error('❌ Erreur API native:', err.response?.status);
+    }
 
-  // 3. Envoyer le mouvement à ton historique custom (optionnel)
-  await sendMovementToAPI({
-    id: movementId,
-    key: line.key,
-    id_product: parseInt(line.productId, 10),
-    product_name: line.productName,
-    combination_label: line.combinationLabel,
-    id_stock_available: parseInt(line.stockId, 10),
-    quantity_before: line.quantity,
-    quantity_added: qty,
-    quantity_after: newQty,
-    note,
-    date: new Date().toISOString(),
-  });
+    const movementId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    await sendMovementToAPI({
+      id: movementId,
+      key: line.key,
+      id_product: parseInt(line.productId, 10),
+      product_name: line.productName,
+      combination_label: line.combinationLabel,
+      id_stock_available: parseInt(line.stockId, 10),
+      quantity_before: line.quantity,
+      quantity_added: qty,
+      quantity_after: newQty,
+      note,
+      date: new Date().toISOString(),
+    });
 
-  return { ...line, quantity: newQty };
-},
-  /**
-   * Retire une quantité du stock d'une ligne et enregistre le mouvement.
-   * Retourne la ligne mise à jour.
-   */
+    return { ...line, quantity: newQty };
+  },
+
   removeStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
     if (qty <= 0) throw new Error('La quantité doit être > 0');
     if (qty > line.quantity) throw new Error(`Stock insuffisant (disponible : ${line.quantity})`);
 
-    // 1. Mettre à jour ps_stock_available via stockapi.php (delta négatif)
     const xml = buildStockUpdateXml(line.productId, line.combinationId ?? 0, -qty);
     const { data: rawXml } = await moduleApi.post('/stockapi.php', xml);
-
     const result = parseStockUpdateResponse(rawXml);
     if (!result.success) throw new Error(result.error ?? 'Erreur serveur');
 
     const newQty = result.newQty;
 
-    // 2. Écrire dans ps_stock_mvt (API native PS) — sign=-1 pour une sortie
     const nativeXml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_mvt>
@@ -524,10 +697,9 @@ try {
     try {
       await api.post('/stock_movements', nativeXml);
     } catch (err: any) {
-      console.error('❌ Erreur API native (sortie):', err.response?.status, err.response?.data);
+      console.error('❌ Erreur API native (sortie):', err.response?.status);
     }
 
-    // 3. Envoyer le mouvement à l'historique custom
     const movementId = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     await sendMovementToAPI({
       id: movementId,
@@ -546,11 +718,6 @@ try {
     return { ...line, quantity: newQty };
   },
 
-  /**
-   * Enregistre les mouvements de stock pour toutes les lignes d'une commande.
-   * direction='sortie' : commande validée (paiement OK)
-   * direction='entree' : commande annulée (retour en stock)
-   */
   recordOrderMovements: async (
     rows: Array<{ productId: string; combinationId: string; quantity: number }>,
     orderRef: string,
@@ -585,20 +752,17 @@ try {
     }
   },
 
-  // Enregistre un mouvement dans ps_stock_mvt (backoffice PS)
-// Enregistre un mouvement dans ps_stock_mvt (backoffice PS)
-addMouvementStock: async (
-  stockId: string,
-  productId: string,
-  combinationId: string,
-  quantityAdded: number,
-  quantityBefore: number,
-  customDate?: string
-): Promise<void> => {
-  const dateToUse = customDate
-    ?? new Date().toISOString().slice(0, 19).replace('T', ' ');
+  addMouvementStock: async (
+    stockId: string,
+    productId: string,
+    combinationId: string,
+    quantityAdded: number,
+    quantityBefore: number,
+    customDate?: string
+  ): Promise<void> => {
+    const dateToUse = customDate ?? new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
   <stock_mvt>
     <id_employee><![CDATA[1]]></id_employee>
@@ -611,292 +775,149 @@ addMouvementStock: async (
   </stock_mvt>
 </prestashop>`;
 
-  try {
-    // 1. POST — PrestaShop ignorera date_add et utilisera NOW()
-    const postRes = await api.post('/stock_movements', xml);
-    const postDoc = new DOMParser().parseFromString(postRes.data, 'text/xml');
-    const mvtId = postDoc.querySelector('stock_mvt > id')?.textContent?.trim();
+    try {
+      const postRes = await api.post('/stock_movements', xml);
+      const postDoc = new DOMParser().parseFromString(postRes.data, 'text/xml');
+      const mvtId = postDoc.querySelector('stock_mvt > id')?.textContent?.trim();
 
-    // 2. Si customDate fourni, forcer la date comme pour les commandes/paniers
-    if (customDate && mvtId) {
-      try {
-        console.log(`[addMouvementStock] Récupération mouvement ${mvtId} pour mise à jour date...`);
-
-        // GET le XML complet du mouvement créé
-        const getRes = await api.get(`/stock_movements/${mvtId}`);
-        let mvtXml = getRes.data as string;
-
-        // Remplacer date_add dans le XML retourné (même pattern que orders/carts)
-        mvtXml = mvtXml.replace(
-          /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
-          `<date_add><![CDATA[${customDate}]]></date_add>`
-        );
-
-        // PUT avec le XML corrigé
-        await api.put(`/stock_movements/${mvtId}`, mvtXml);
-        console.log(`✅ Date mise à jour pour mouvement ${mvtId}: ${customDate}`);
-      } catch (updateErr: any) {
-        console.warn(
-          `⚠️ Impossible de corriger la date du mouvement ${mvtId}:`,
-          updateErr?.response?.data ?? updateErr.message
-        );
-        // Non bloquant — le mouvement existe, seule la date est incorrecte
+      if (customDate && mvtId) {
+        try {
+          const getRes = await api.get(`/stock_movements/${mvtId}`);
+          let mvtXml = getRes.data as string;
+          mvtXml = mvtXml.replace(
+            /<date_add><!\[CDATA\[.*?\]\]><\/date_add>/,
+            `<date_add><![CDATA[${customDate}]]></date_add>`
+          );
+          await api.put(`/stock_movements/${mvtId}`, mvtXml);
+        } catch (updateErr: any) {
+          console.warn(`⚠️ Impossible de corriger la date du mouvement ${mvtId}`);
+        }
       }
+    } catch (err: any) {
+      console.warn('[addMouvementStock] Impossible d\'enregistrer le mouvement', err);
     }
-  } catch (err: any) {
-    console.warn('[addMouvementStock] Impossible d\'enregistrer le mouvement', err);
-  }
-},
+  },
 
-  /** Récupère l'historique des mouvements, filtrables par produit */
-  /**
- * Récupère l'historique des mouvements depuis l'API native PrestaShop
- * @param productId - ID du produit (optionnel)
- * @returns Liste des mouvements
- */
+  getMovements: async (productId: string, combinationId?: string | null): Promise<StockMovement[]> => {
+    console.log('[getMovements] === DÉBUT ===', { productId, combinationId });
 
-/**
- * Récupère l'historique des mouvements depuis l'API native PrestaShop
- * @param productId - ID du produit (optionnel)
- * @returns Liste des mouvements
- */
-/**
- /**
- * Récupère l'historique (snapshot + tentative API PrestaShop)
- * @param productId - ID produit OU reference (ex: M_02)
- */
-getMovements: async (productId: string, combinationId?: string | null): Promise<StockMovement[]> => {
-  console.log('[getMovements] === DÉBUT ===', { productId, combinationId });
+    try {
+      if (!productId) return [];
 
-  try {
-    if (!productId) {
-      console.warn('[getMovements] productId manquant');
+      const stockRes = await api.get(`/stock_availables?filter[id_product]=[${productId}]&display=full`);
+      const stockParsed = parseXML(stockRes.data) as any;
+      const stockRoot = stockParsed?.prestashop ?? stockParsed?.Prestashop ?? stockParsed;
+      let stockAvailables = toArray(stockRoot?.stock_availables?.stock_available ?? []);
+
+      const targetAttributeId = (combinationId && combinationId !== '0') ? combinationId : '0';
+
+      stockAvailables = stockAvailables.filter((s: any) => {
+        const attrId = String(s.id_product_attribute?.['#text'] ?? s.id_product_attribute ?? '0').trim();
+        return attrId === targetAttributeId;
+      });
+
+      const stockMap = new Map<string, { productId: string; attributeId: string }>();
+      stockAvailables.forEach((s: any) => {
+        const idStock = String(s.id_stock_available?.['#text'] ?? s.id_stock_available ?? s.id?.['#text'] ?? s.id ?? '').trim();
+        if (!idStock || idStock === 'undefined') return;
+        const prodId = String(s.id_product?.['#text'] ?? s.id_product ?? '').trim();
+        const attrId = String(s.id_product_attribute?.['#text'] ?? s.id_product_attribute ?? '0').trim();
+        stockMap.set(idStock, { productId: prodId, attributeId: attrId });
+      });
+
+      const mvtRes = await api.get('/stock_movements?display=full');
+      const parsed = parseXML(mvtRes.data) as any;
+      const root = parsed?.prestashop ?? parsed?.Prestashop ?? parsed;
+      const rawMovements = toArray(root?.stock_movements?.stock_mvt ?? root?.stock_mvts?.stock_mvt ?? []);
+
+      const validStockIds = new Set(stockMap.keys());
+
+      const movements: StockMovement[] = rawMovements
+        .map((mvt: any): StockMovement | null => {
+          const stockId = String(mvt.id_stock?.['#text'] ?? mvt.id_stock ?? '').trim();
+          if (!validStockIds.has(stockId)) return null;
+
+          const stockInfo = stockMap.get(stockId);
+          if (!stockInfo) return null;
+
+          const physical = parseInt(mvt.physical_quantity?.['#text'] ?? mvt.physical_quantity ?? '0', 10);
+          const sign = parseInt(mvt.sign?.['#text'] ?? mvt.sign ?? '1', 10);
+          const date = String(mvt.date_add?.['#text'] ?? mvt.date_add ?? '');
+          const mvtId = String(mvt.id?.['#text'] ?? mvt.id ?? mvt.id_stock_mvt?.['#text'] ?? mvt.id_stock_mvt ?? '');
+
+          return {
+            id: mvtId,
+            key: mvtId,
+            productId: stockInfo.productId,
+            productName: '',
+            combinationLabel: stockInfo.attributeId !== '0' ? `Déclinaison ${stockInfo.attributeId}` : '',
+            combinationId: stockInfo.attributeId !== '0' ? stockInfo.attributeId : null,
+            stockId,
+            quantityAdded: physical * sign,
+            quantityBefore: 0,
+            quantityAfter: 0,
+            date,
+            note: sign === 1 ? `+${physical}` : `-${physical}`,
+          };
+        })
+        .filter((m): m is StockMovement => m !== null);
+
+      movements.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      return movements;
+    } catch (err: any) {
+      console.error('[getMovements] ERROR:', err.message);
       return [];
     }
+  },
 
-    // ======================================================
-    // 1. STOCK AVAILABLE DU PRODUIT (filtré par déclinaison)
-    // ======================================================
-    const stockRes = await api.get(
-      `/stock_availables?filter[id_product]=[${productId}]&display=full`
-    );
-    const stockParsed = parseXML(stockRes.data) as any;
-    const stockRoot = stockParsed?.prestashop ?? stockParsed?.Prestashop ?? stockParsed;
-    let stockAvailables = toArray(
-      stockRoot?.stock_availables?.stock_available ?? []
-    );
-
-    // 🔥 FILTRER PAR DÉCLINAISON si combinationId est fourni
-    const targetAttributeId = (combinationId && combinationId !== '0') ? combinationId : '0';
-    
-    stockAvailables = stockAvailables.filter((s: any) => {
-      const attrId = String(
-        s.id_product_attribute?.['#text'] ?? 
-        s.id_product_attribute ?? 
-        '0'
-      ).trim();
-      return attrId === targetAttributeId;
-    });
-
-    console.log('[getMovements] stockAvailables filtrés:', stockAvailables.length);
-
-    const stockMap = new Map<string, { productId: string; attributeId: string }>();
-    stockAvailables.forEach((s: any) => {
-      const idStock = String(
-        s.id_stock_available?.['#text'] ?? 
-        s.id_stock_available ?? 
-        s.id?.['#text'] ?? 
-        s.id ?? 
-        ''
-      ).trim();
-      
-      if (!idStock || idStock === 'undefined') return;
-      
-      const prodId = String(
-        s.id_product?.['#text'] ?? 
-        s.id_product ?? 
-        ''
-      ).trim();
-      
-      const attrId = String(
-        s.id_product_attribute?.['#text'] ?? 
-        s.id_product_attribute ?? 
-        '0'
-      ).trim();
-      
-      stockMap.set(idStock, { 
-        productId: prodId, 
-        attributeId: attrId 
-      });
-    });
-
-    console.log('[getMovements] stockMap size:', stockMap.size);
-
-    // ======================================================
-    // 2. RÉSOLUTION DES LABELS DE DÉCLINAISONS (si nécessaire)
-    // ======================================================
-    const combinationLabelMap = new Map<string, string>();
-    combinationLabelMap.set('0', ''); // produit simple
-
-    // Si on a une déclinaison spécifique, on résout son label
-    if (targetAttributeId !== '0') {
-      try {
-        const combRes = await api.get(
-          `/combinations/${targetAttributeId}?display=full`
-        );
-        const combParsed = parseXML(combRes.data) as any;
-        const combRoot = combParsed?.prestashop ?? combParsed?.Prestashop ?? combParsed;
-        const combination = combRoot?.combination;
-
-        if (combination) {
-          const optionValues = toArray(
-            combination.associations?.product_option_values?.product_option_value ?? []
-          );
-
-          const labels: string[] = [];
-          for (const ov of optionValues) {
-            const ovId = String(
-              ov.id?.['#text'] ?? 
-              ov.id ?? 
-              ov['#text'] ?? 
-              ''
-            ).trim();
-            
-            if (!ovId) continue;
-            
-            try {
-              const ovRes = await api.get(`/product_option_values/${ovId}?display=full`);
-              const ovParsed = parseXML(ovRes.data) as any;
-              const ovRoot = ovParsed?.prestashop ?? ovParsed?.Prestashop ?? ovParsed;
-              const ovEl = ovRoot?.product_option_value;
-              
-              let name = '';
-              const langNode = ovEl?.name?.language;
-              if (Array.isArray(langNode)) {
-                name = String(langNode[0]?.['#text'] ?? langNode[0] ?? '');
-              } else if (langNode) {
-                name = String(langNode?.['#text'] ?? langNode ?? '');
-              } else {
-                name = String(ovEl?.name?.['#text'] ?? ovEl?.name ?? '');
-              }
-              
-              if (name.trim()) labels.push(name.trim());
-            } catch {
-              // Non bloquant
-            }
-          }
-
-          combinationLabelMap.set(
-            targetAttributeId, 
-            labels.join(' / ') || `Déclinaison ${targetAttributeId}`
-          );
-          console.log(`[getMovements] combId=${targetAttributeId} → "${combinationLabelMap.get(targetAttributeId)}"`);
-        }
-      } catch (combErr: any) {
-        console.warn('[getMovements] Impossible de résoudre la déclinaison:', combErr.message);
-      }
-    }
-
-    // ======================================================
-    // 3. MOUVEMENTS STOCK
-    // ======================================================
-    const mvtRes = await api.get('/stock_movements?display=full');
-    const parsed = parseXML(mvtRes.data) as any;
-    const root = parsed?.prestashop ?? parsed?.Prestashop ?? parsed;
-    const rawMovements = toArray(
-      root?.stock_movements?.stock_mvt ?? 
-      root?.stock_mvts?.stock_mvt ?? 
-      []
-    );
-
-    console.log('[getMovements] rawMovements total:', rawMovements.length);
-
-    // ======================================================
-    // 4. TRANSFORMATION + FILTRE PAR STOCK_ID
-    // ======================================================
-    const validStockIds = new Set(stockMap.keys());
-    
-    const movements: StockMovement[] = rawMovements
-      .map((mvt: any): StockMovement | null => {
-        // Récupération du stockId
-        const stockId = String(
-          mvt.id_stock?.['#text'] ?? 
-          mvt.id_stock ?? 
-          ''
-        ).trim();
-        
-        // Vérifier si ce mouvement appartient au stock ciblé
-        if (!validStockIds.has(stockId)) return null;
-        
-        const stockInfo = stockMap.get(stockId);
-        if (!stockInfo) return null;
-
-        const physical = parseInt(
-          mvt.physical_quantity?.['#text'] ?? 
-          mvt.physical_quantity ?? 
-          '0', 10
-        );
-        
-        const sign = parseInt(
-          mvt.sign?.['#text'] ?? 
-          mvt.sign ?? 
-          '1', 10
-        );
-        
-        const date = String(
-          mvt.date_add?.['#text'] ?? 
-          mvt.date_add ?? 
-          ''
-        );
-
-        const resolvedLabel = combinationLabelMap.get(stockInfo.attributeId) ?? 
-                             (stockInfo.attributeId !== '0' ? `Déclinaison ${stockInfo.attributeId}` : '');
-
-        // Récupérer l'ID du mouvement
-        const mvtId = String(
-          mvt.id?.['#text'] ?? 
-          mvt.id ?? 
-          mvt.id_stock_mvt?.['#text'] ?? 
-          mvt.id_stock_mvt ?? 
-          ''
-        );
-
-        return {
-          id: mvtId,
-          key: mvtId,
-          productId: stockInfo.productId,
-          productName: '', // Sera rempli par l'appelant si besoin
-          combinationLabel: resolvedLabel,
-          combinationId: stockInfo.attributeId !== '0' ? stockInfo.attributeId : null,
-          stockId,
-          quantityAdded: physical * sign,
-          quantityBefore: 0, // À calculer si besoin
-          quantityAfter: 0,  // À calculer si besoin
-          date,
-          note: sign === 1 ? `+${physical}` : `-${physical}`,
-        };
-      })
-      .filter((m): m is StockMovement => m !== null);
-
-    // Trier par date (plus ancien au plus récent pour le calcul du stock)
-    movements.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-    console.log('[getMovements] FINAL movements pour cette déclinaison:', movements.length);
-    return movements;
-
-  } catch (err: any) {
-    console.error('[getMovements] ERROR:', err.message);
-    return [];
-  }
-},
-
- // Version simplifiée : retourne tous les mouvements bruts
-
-// Helper — handles all PS XML field shapes
-
-
-  /** Supprime tous les mouvements locaux */
   clearMovements: (): void => {
     localStorage.removeItem(MOVEMENTS_KEY);
+  },
+
+  // ==========================================
+  // STOCK PAR CATÉGORIE - MÉTHODES PUBLIQUES
+  // ==========================================
+
+  getStockByCategory: async (): Promise<CategoryStock[]> => {
+    return getStockByCategoryStatic();
+  },
+
+  getReservedQuantitiesByProduct: async (ordersXml: string): Promise<Map<string, number>> => {
+    return getReservedQuantitiesByProductStatic(ordersXml);
+  },
+
+  calculateStockByCategory: (
+    products: Array<{
+      id: string;
+      categoryId: string;
+      categoryName: string;
+      physicalQuantity: number;
+    }>,
+    reservedQuantities: Map<string, number>
+  ): CategoryStock[] => {
+    const categoryMap = new Map<string, CategoryStock>();
+
+    for (const product of products) {
+      if (!categoryMap.has(product.categoryId)) {
+        categoryMap.set(product.categoryId, {
+          categoryId: product.categoryId,
+          categoryName: product.categoryName,
+          physicalQuantity: 0,
+          reservedQuantity: 0,
+          availableQuantity: 0,
+        });
+      }
+
+      const stock = categoryMap.get(product.categoryId)!;
+      const reserved = reservedQuantities.get(product.id) || 0;
+
+      stock.physicalQuantity += product.physicalQuantity;
+      stock.reservedQuantity += reserved;
+      stock.availableQuantity = stock.physicalQuantity - stock.reservedQuantity;
+    }
+
+    return Array.from(categoryMap.values())
+      .filter(cat => cat.physicalQuantity > 0 || cat.reservedQuantity > 0)
+      .sort((a, b) => a.categoryName.localeCompare(b.categoryName));
   },
 };

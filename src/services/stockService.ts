@@ -603,9 +603,9 @@ addMouvementStock: async (
   <stock_mvt>
     <id_employee><![CDATA[1]]></id_employee>
     <id_stock><![CDATA[${stockId}]]></id_stock>
-    <id_stock_mvt_reason><![CDATA[1]]></id_stock_mvt_reason>
+    <id_stock_mvt_reason><![CDATA[${quantityAdded >= 0 ? 1 : 2}]]></id_stock_mvt_reason>
     <physical_quantity><![CDATA[${Math.abs(quantityAdded)}]]></physical_quantity>
-    <sign><![CDATA[${quantityAdded > 0 ? 1 : -1}]]></sign>
+    <sign><![CDATA[${quantityAdded >= 0 ? 1 : -1}]]></sign>
     <price_te><![CDATA[0]]></price_te>
     <date_add><![CDATA[${dateToUse}]]></date_add>
   </stock_mvt>

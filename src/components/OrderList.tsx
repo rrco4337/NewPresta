@@ -71,29 +71,12 @@ const OrderList: React.FC = () => {
 
   useEffect(() => { load(); }, [load]);
 
-  // Vérifier si la transition est autorisée
+  // Vérifier si la transition est autorisée (miroir de orderService.isTransitionAllowed)
   const isTransitionAllowed = (oldState: number, newState: number): boolean => {
-    // Règle: "dans le panier" (1) → paiement effectué (2) ou annulé (6) : OK
-    if (oldState === 1 && (newState === 2 || newState === 6)) {
-      return true;
-    }
-    // paiement effectué (2) → annulé (6) : OK
-    if (oldState === 2 && newState === 6) {
-      return true;
-    }
-    // annulé (6) → paiement effectué (2) : rare mais possible
-    if (oldState === 6 && newState === 2) {
-      return true;
-    }
-    // Même état : pas de changement
-    if (oldState === newState) {
-      return false;
-    }
-    // TOUT VERS "dans le panier" (1) : INTERDIT
-    if (newState === 1) {
-      return false;
-    }
-    // Autres cas non autorisés
+    if (oldState === 1 && (newState === 2 || newState === 6)) return true;
+    if (oldState === 2 && (newState === 5 || newState === 6)) return true;
+    if (oldState === 5 && newState === 6) return true;
+    if (oldState === 6 && newState === 2) return true;
     return false;
   };
 
@@ -131,16 +114,16 @@ const handleConfirmChange = async () => {
     }
 
     if (success) {
-      // Enregistrer les mouvements de stock
+      // Mouvements de stock : uniquement sur "Livré" (5) ou annulation après livraison
       const ref = order.reference || `#${order.id}`;
-      if (newValue === 2) {
-        // Sortie stock : commande validée
+      if (newValue === 5) {
+        // Sortie stock : commande livrée
         const rows = order.cartRows?.length
           ? order.cartRows
           : await fetchOrderRows(order.id);
         stockService.recordOrderMovements(rows, ref, 'sortie').catch(() => {});
-      } else if (newValue === 6 && oldValue === 2) {
-        // Entrée stock : commande annulée (retour)
+      } else if (newValue === 6 && (oldValue === 2 || oldValue === 5)) {
+        // Entrée stock : remise en stock si annulation (livraison annulée ou commande payée annulée)
         const rows = await fetchOrderRows(order.id);
         stockService.recordOrderMovements(rows, ref, 'entree').catch(() => {});
       }

@@ -567,13 +567,16 @@ try {
         console.warn(`[stockService] recordOrderMovements: ligne introuvable pour ${key}`);
         continue;
       }
-      const note = direction === 'sortie'
-        ? `Sortie commande ${orderRef}`
-        : `Retour commande ${orderRef}`;
       try {
         if (direction === 'sortie') {
-          await stockService.removeStock(line, row.quantity, note);
+          // PS decrements stock_available automatically via order_history;
+          // only record the movement to avoid double-decrement
+          await stockService.addMouvementStock(
+            line.stockId, line.productId, line.combinationId ?? '0',
+            -row.quantity, line.quantity,
+          );
         } else {
+          const note = `Retour commande ${orderRef}`;
           await stockService.addStock(line, row.quantity, note);
         }
       } catch (err) {
@@ -600,9 +603,9 @@ addMouvementStock: async (
   <stock_mvt>
     <id_employee><![CDATA[1]]></id_employee>
     <id_stock><![CDATA[${stockId}]]></id_stock>
-    <id_stock_mvt_reason><![CDATA[1]]></id_stock_mvt_reason>
+    <id_stock_mvt_reason><![CDATA[${quantityAdded >= 0 ? 1 : 2}]]></id_stock_mvt_reason>
     <physical_quantity><![CDATA[${Math.abs(quantityAdded)}]]></physical_quantity>
-    <sign><![CDATA[${quantityAdded > 0 ? 1 : -1}]]></sign>
+    <sign><![CDATA[${quantityAdded >= 0 ? 1 : -1}]]></sign>
     <price_te><![CDATA[0]]></price_te>
     <date_add><![CDATA[${dateToUse}]]></date_add>
   </stock_mvt>

@@ -470,6 +470,14 @@ async function importFichier1(
   cols: any,
   onProgress?: (current: number, total: number, label: string) => void
 ): Promise<FichierImportResult[]> {
+  // Réinitialisation des caches
+  categoryCache = new Map();
+  categoryPending = new Map();
+  categoryLoadPromise = null;
+  productRefCache = new Map();
+  taxRateCache = new Map();
+  productDateCache = new Map();
+
   // Tableau pré-alloué pour conserver l'ordre CSV malgré la concurrence
   const results: FichierImportResult[] = new Array(rows.length);
   let done = 0;
@@ -786,15 +794,21 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
   }).filter((it) => it.reference);
 }
 
+// Valeurs normalisées sans accents — comparées à etat après stripAccents()
 const STATUS_MAP = {
   CART_ONLY: 'dans le panier',
-  PAID: 'paiement accepté',
-  CANCELLED: 'annulé'
+  PAID:      'paiement accepte',
+  CANCELLED: 'annule',
+  DELIVERED: 'livre',
 } as const;
 
-// IDs standards PrestaShop
+function stripAccents(s: string): string {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
 const PS_STATE_PAYMENT_ACCEPTED = 2;
-const PS_STATE_CANCELED = 6;
+const PS_STATE_CANCELED         = 6;
+const PS_STATE_DELIVERED        = 5;  // ← nouveau (ID standard PrestaShop)
 
 interface ImportCustomer {
   id: string;
@@ -921,7 +935,7 @@ export async function importFichier3(
     async ({ row, csvLine }, i) => {
       const [date, nom, email, pwd, adresse, achat, etatRaw] = row;
       const label = `${nom} (${email})`;
-      const etat  = (etatRaw || '').toLowerCase().trim();
+      const etat  = stripAccents((etatRaw || '').toLowerCase().trim());
  
       console.log(`Traitement ligne ${csvLine}:`, { date, nom, email, etat });
       onProgress?.(done, rows.length, label);
@@ -949,7 +963,7 @@ export async function importFichier3(
         let importType = 'Panier';
  
         // 5. Commande si statut le demande
-        if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED) {
+       if (etat === STATUS_MAP.PAID || etat === STATUS_MAP.CANCELLED || etat === STATUS_MAP.DELIVERED) {
           const orderId = await createPSOrder({
             customerId: customer.id,
             addressId,
@@ -963,7 +977,9 @@ export async function importFichier3(
           console.log(`Commande créée ID: ${orderId}, Date: ${finalDate}`);
  
           const psState = etat === STATUS_MAP.PAID
-            ? PS_STATE_PAYMENT_ACCEPTED
+          ? PS_STATE_PAYMENT_ACCEPTED
+          : etat === STATUS_MAP.DELIVERED
+            ? PS_STATE_DELIVERED
             : PS_STATE_CANCELED;
  
           const statusXml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -977,12 +993,22 @@ export async function importFichier3(
 </prestashop>`;
  
           await api.post('/order_histories', statusXml);
- 
-          // NOTE : la correction des dates des mouvements de stock auto (3 appels API
-          // supplémentaires par produit) a été supprimée — elle représentait ~1 200 appels
-          // pour 200 commandes × 3 produits. Si cette correction est critique, envisager
-          // un script de patch différé (ex. job nocturne sur stock_movements).
- 
+
+          // Mouvement de stock sortie uniquement sur "livré"
+          if (psState === PS_STATE_DELIVERED) {
+            for (const ci of checkoutItems) {
+              const combId = ci.attributeId ?? '0';
+              try {
+                const stockId = await getStockAvailableId(ci.id, combId);
+                if (stockId) {
+                  await stockService.addMouvementStock(stockId, ci.id, combId, -ci.qty, 0, finalDate);
+                }
+              } catch (mvtErr) {
+                console.warn(`[importFichier3] Mouvement sortie ignoré pour produit ${ci.id}`, mvtErr);
+              }
+            }
+          }
+
           finalId    = orderId;
           importType = 'Commande';
         }

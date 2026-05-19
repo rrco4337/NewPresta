@@ -42,7 +42,15 @@ function periodLabel(filters: FinancialFilters): string {
 
 export default function FinancialAnalytics() {
   const [filters, setFilters] = useState<FinancialFilters>(DEFAULT_FILTERS);
-  const { global, categories, allCategories, loading, error, refetch } = useFinancialData(filters);
+  const { 
+    global, 
+    categories, 
+    allCategories, 
+    totalStockValue,  // AJOUTÉ : récupérer la valeur du stock
+    loading, 
+    error, 
+    refetch 
+  } = useFinancialData(filters);
 
   const handleFiltersChange = (next: FinancialFilters) => {
     setFilters(next);
@@ -51,6 +59,10 @@ export default function FinancialAnalytics() {
   const handleCategoryChange = (id: number | null) => {
     setFilters(f => ({ ...f, categoryId: id }));
   };
+
+  // Log pour déboguer
+  console.log('💰 totalStockValue dans le composant:', totalStockValue);
+  console.log('📊 global:', global);
 
   if (loading) return <FinancialSkeleton />;
 
@@ -97,13 +109,12 @@ export default function FinancialAnalytics() {
               ? `Totaux — catégorie sélectionnée`
               : 'Totaux globaux — toutes catégories'}
           </p>
-          <GlobalCards global={global} />
+          {/* CORRECTION : Passer totalStockValue */}
+          <GlobalCards global={global} totalStockValue={totalStockValue} />
         </div>
       )}
 
-      {/* ── Graphique ── */}
-      <CategoryChart categories={filters.categoryId ? categories : allCategories} />
-
+    
       {/* ── Tableau par catégorie ── */}
       <CategoryTable categories={categories} />
 

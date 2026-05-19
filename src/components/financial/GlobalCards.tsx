@@ -30,11 +30,22 @@ const IconLoss = () => (
   </svg>
 );
 
+const IconStock = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+    <path d="M12 11v4"/>
+    <path d="M8 11v4"/>
+    <path d="M16 11v4"/>
+  </svg>
+);
+
 interface GlobalCardsProps {
   global: FinancialGlobal;
+  totalStockValue: number;  // Valeur totale du stock
 }
 
-export function GlobalCards({ global }: GlobalCardsProps) {
+export function GlobalCards({ global, totalStockValue }: GlobalCardsProps) {
   const isProfit = global.profit >= 0;
 
   return (
@@ -70,6 +81,18 @@ export function GlobalCards({ global }: GlobalCardsProps) {
           </p>
         </div>
       </div>
+
+      {/* Nouvelle carte pour la valeur du stock */}
+      {/* <div className="fa-kpi-card">
+        <div className="fa-kpi-icon fa-kpi-icon--purple">
+          <IconStock />
+        </div>
+        <div className="fa-kpi-body">
+          <p className="fa-kpi-label">Valeur totale du stock</p>
+          <p className="fa-kpi-value">{formatCurrency(totalStockValue)}</p>
+          <p className="fa-kpi-subtitle">Coût d'achat total</p>
+        </div>
+      </div> */}
     </div>
   );
 }

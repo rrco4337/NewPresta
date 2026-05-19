@@ -798,6 +798,72 @@ export const stockService = {
     }
   },
 
+  getAllMovements: async (): Promise<StockMovement[]> => {
+    try {
+      // 1. stockId → {productId, attributeId}
+      const stockRes = await api.get('/stock_availables?display=full');
+      const stockParsed = parseXML(stockRes.data) as any;
+      const stockRoot = stockParsed?.prestashop ?? stockParsed;
+      const allStocks = toArray(stockRoot?.stock_availables?.stock_available ?? []);
+
+      const stockMap = new Map<string, { productId: string; attributeId: string }>();
+      for (const s of allStocks) {
+        if (!isObj(s)) continue;
+        const id = String((s as any).id ?? '').trim();
+        const productId = String((s as any).id_product ?? '').trim();
+        const attributeId = String((s as any).id_product_attribute ?? '0').trim();
+        if (id && productId) stockMap.set(id, { productId, attributeId });
+      }
+
+      // 2. productId → name
+      const products = await fetchProducts();
+
+      // 3. All movements
+      const mvtRes = await api.get('/stock_movements?display=full');
+      const parsed = parseXML(mvtRes.data) as any;
+      const root = parsed?.prestashop ?? parsed;
+      const rawMovements = toArray(root?.stock_movements?.stock_mvt ?? root?.stock_mvts?.stock_mvt ?? []);
+
+      const movements: StockMovement[] = rawMovements
+        .map((mvt: any): StockMovement | null => {
+          if (!isObj(mvt)) return null;
+          const stockId = String((mvt as any).id_stock ?? '').trim();
+          const stockInfo = stockMap.get(stockId);
+          if (!stockInfo) return null;
+
+          const product = products.get(stockInfo.productId);
+          if (!product) return null; // produit supprimé — données fantômes, on ignore
+
+          const physical = parseInt(String((mvt as any).physical_quantity ?? '0'), 10);
+          const sign = parseInt(String((mvt as any).sign ?? '1'), 10);
+          const date = String((mvt as any).date_add ?? '');
+          const mvtId = String((mvt as any).id ?? '');
+
+          return {
+            id: mvtId,
+            key: mvtId,
+            productId: stockInfo.productId,
+            productName: product.name,
+            combinationLabel: stockInfo.attributeId !== '0' ? `Déclinaison #${stockInfo.attributeId}` : '',
+            combinationId: stockInfo.attributeId !== '0' ? stockInfo.attributeId : null,
+            stockId,
+            quantityAdded: physical * sign,
+            quantityBefore: 0,
+            quantityAfter: 0,
+            date,
+            note: '',
+          };
+        })
+        .filter((m): m is StockMovement => m !== null);
+
+      movements.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      return movements;
+    } catch (err: any) {
+      console.error('[getAllMovements] ERROR:', err.message);
+      return [];
+    }
+  },
+
   getMovements: async (productId: string, combinationId?: string | null): Promise<StockMovement[]> => {
     console.log('[getMovements] === DÉBUT ===', { productId, combinationId });
 

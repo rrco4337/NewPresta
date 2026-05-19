@@ -345,6 +345,94 @@
   to { transform: rotate(360deg); }
 }
 
+/* ── Historique global ─────────────────────────────────────────────────────── */
+.global-history-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.global-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.global-history-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.global-history-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+}
+
+.history-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+
+.history-search {
+  padding: 8px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #334155;
+  outline: none;
+  width: 260px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.history-search:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.time-cell {
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.product-cell {
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.combo-cell {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.movement-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-in {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.badge-out {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 /* ── Responsive ────────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .filters-grid {
@@ -368,5 +456,14 @@
   .stock-table td {
     padding: 8px 10px;
     font-size: 12px;
+  }
+
+  .global-history-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .history-search {
+    width: 100%;
   }
 }

@@ -61,21 +61,47 @@ async function fetchValidatedOrderIds(
   dateFrom: string | null,
   dateTo: string | null,
 ): Promise<string[]> {
-  let url = '/orders?display=[id,current_state,date_add]';
-  if (dateFrom && dateTo) {
-    url += `&date=1&filter[date_add]=[${dateFrom} 00:00:00,${dateTo} 23:59:59]`;
-  }
+  const PAGE_SIZE = 100;
+  const ids: string[] = [];
+  const stateCounts: Record<number, number> = {};
+  let page = 0;
+
+  const baseParams = dateFrom && dateTo
+    ? `&date=1&filter[date_add]=[${dateFrom} 00:00:00,${dateTo} 23:59:59]`
+    : '';
+
+  console.log('[financialService] fetchValidatedOrderIds — plage:', dateFrom, '→', dateTo);
+
   try {
-    const res = await api.get(url);
-    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
-    const ids: string[] = [];
-    doc.querySelectorAll('order').forEach(el => {
-      const id = el.querySelector('id')?.textContent?.trim() ?? '';
-      const state = parseInt(el.querySelector('current_state')?.textContent ?? '0', 10);
-      if (id && VALID_ORDER_STATES.has(state)) ids.push(id);
-    });
+    while (true) {
+      const url = `/orders?display=[id,current_state,date_add]&limit=${PAGE_SIZE}&page=${page}${baseParams}`;
+      console.log(`[financialService] Fetch page ${page}:`, url);
+      const res = await api.get(url);
+
+      const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+      const batch = doc.querySelectorAll('order');
+      console.log(`[financialService] Page ${page}: ${batch.length} commande(s) retournée(s)`);
+
+      if (batch.length === 0) break;
+
+      batch.forEach(el => {
+        const id = el.querySelector('id')?.textContent?.trim() ?? '';
+        const stateRaw = el.querySelector('current_state')?.textContent?.trim() ?? '';
+        const state = parseInt(stateRaw, 10);
+        stateCounts[state] = (stateCounts[state] ?? 0) + 1;
+        console.log(`[financialService]   id=${id} current_state="${stateRaw}" (parsed=${state}) → valide=${VALID_ORDER_STATES.has(state)}`);
+        if (id && VALID_ORDER_STATES.has(state)) ids.push(id);
+      });
+
+      if (batch.length < PAGE_SIZE) break;
+      page++;
+    }
+
+    console.log('[financialService] Répartition des états:', stateCounts);
+    console.log('[financialService] IDs retenus (états valides 2+5):', ids);
     return ids;
-  } catch {
+  } catch (err) {
+    console.error('[financialService] Erreur fetchValidatedOrderIds:', err);
     return [];
   }
 }
@@ -90,14 +116,18 @@ async function fetchOrderDetailRows(
     doc.querySelectorAll('order_detail').forEach(el => {
       const productId = parseInt(el.querySelector('product_id')?.textContent ?? '0', 10);
       const quantity = parseInt(el.querySelector('product_quantity')?.textContent ?? '0', 10);
-      // Préférer le prix HT, fallback sur TTC si absent
       const htText = el.querySelector('unit_price_tax_excl')?.textContent;
       const ttcText = el.querySelector('unit_price_tax_incl')?.textContent;
       const unitPriceHT = parseFloat(htText || ttcText || '0');
+      console.log(`[financialService]   Détail commande ${orderId}: productId=${productId} qty=${quantity} HT=${unitPriceHT} (htText="${htText}" ttcText="${ttcText}")`);
       if (productId && quantity > 0) rows.push({ productId, quantity, unitPriceHT });
     });
+    if (rows.length === 0) {
+      console.warn(`[financialService]   Commande ${orderId}: aucun order_detail retourné`);
+    }
     return rows;
-  } catch {
+  } catch (err) {
+    console.error(`[financialService] Erreur fetchOrderDetailRows commande ${orderId}:`, err);
     return [];
   }
 }
@@ -115,20 +145,32 @@ export const financialService = {
     ]);
     const productMap = new Map<number, any>(products.map(p => [Number(p.id), p]));
 
+    console.log('[financialService] Produits chargés:', products.length, '| Commandes valides:', orderIds.length);
+
     // Agrégation ventes HT et COGS par produit
     const salesByProduct = new Map<number, number>();
     const cogsByProduct = new Map<number, number>();
 
     for (const orderId of orderIds) {
+      console.log(`[financialService] Traitement commande ${orderId}...`);
       const rows = await fetchOrderDetailRows(orderId);
       for (const row of rows) {
         const product = productMap.get(row.productId);
         const salesValue = row.quantity * row.unitPriceHT;
-        const cogsValue = row.quantity * (product?.wholesale_price ?? 0);
+        const wholesalePrice = product?.wholesale_price ?? 0;
+        const cogsValue = row.quantity * wholesalePrice;
+        if (!product) {
+          console.warn(`[financialService]   productId=${row.productId} INTROUVABLE dans le catalogue (produit supprimé ?)`);
+        } else {
+          console.log(`[financialService]   productId=${row.productId} wholesale_price=${wholesalePrice} → ventes=${salesValue.toFixed(2)} COGS=${cogsValue.toFixed(2)}`);
+        }
         salesByProduct.set(row.productId, (salesByProduct.get(row.productId) ?? 0) + salesValue);
         cogsByProduct.set(row.productId, (cogsByProduct.get(row.productId) ?? 0) + cogsValue);
       }
     }
+
+    console.log('[financialService] RÉSUMÉ salesByProduct:', Object.fromEntries(salesByProduct));
+    console.log('[financialService] RÉSUMÉ cogsByProduct:', Object.fromEntries(cogsByProduct));
 
     // Agrégation par catégorie (toutes catégories présentes dans le catalogue)
     const catMap = new Map<number, { name: string; sales: number; purchases: number }>();

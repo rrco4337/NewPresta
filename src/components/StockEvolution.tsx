@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './StockEvolution.css';
-import { stockService, type StockLine } from '../services/stockService';
+import { stockService, type StockLine, type StockMovement } from '../services/stockService';
 
 interface DailyStock {
   date: string;
@@ -27,9 +27,16 @@ const StockEvolution: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // Charger la liste des produits ET déclinaisons
+  const [allMovements, setAllMovements] = useState<StockMovement[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historySearch, setHistorySearch] = useState('');
+
   useEffect(() => {
     fetchItems();
+    stockService.getAllMovements()
+      .then(setAllMovements)
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
   }, []);
 
   const fetchItems = async () => {
@@ -141,11 +148,18 @@ const StockEvolution: React.FC = () => {
     return date.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   };
 
-  const filteredItems = items.filter(item => 
+  const filteredItems = items.filter(item =>
     item.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.productId.includes(searchTerm)
   );
+
+  const filteredHistory = historySearch
+    ? allMovements.filter(m =>
+        m.productName.toLowerCase().includes(historySearch.toLowerCase()) ||
+        m.combinationLabel.toLowerCase().includes(historySearch.toLowerCase())
+      )
+    : allMovements;
 
   const totalMovement = dailyData.reduce((sum, d) => sum + d.movement, 0);
   const avgMovement = dailyData.length ? (totalMovement / dailyData.length).toFixed(1) : '0';
@@ -289,6 +303,77 @@ const StockEvolution: React.FC = () => {
             </tbody>
           </table>
         )}
+      </div>
+
+      {/* ── Historique global ── */}
+      <div className="global-history-section">
+        <div className="global-history-header">
+          <div className="global-history-title-row">
+            <h2 className="global-history-title">Historique global des mouvements</h2>
+            {!historyLoading && (
+              <span className="history-count">{filteredHistory.length} mouvement{filteredHistory.length !== 1 ? 's' : ''}</span>
+            )}
+          </div>
+          <input
+            type="text"
+            className="history-search"
+            placeholder="Filtrer par produit..."
+            value={historySearch}
+            onChange={e => setHistorySearch(e.target.value)}
+          />
+        </div>
+
+        <div className="table-wrapper">
+          {historyLoading ? (
+            <div className="loading-state">
+              <div className="spinner" />
+              <p>Chargement de l'historique…</p>
+            </div>
+          ) : filteredHistory.length === 0 ? (
+            <div className="empty-state">
+              <p>Aucun mouvement enregistré</p>
+            </div>
+          ) : (
+            <table className="stock-table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Heure</th>
+                  <th>Produit</th>
+                  <th>Déclinaison</th>
+                  <th>Type</th>
+                  <th>Quantité</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredHistory.map((mvt, idx) => {
+                  const d = new Date(mvt.date);
+                  const isIn = mvt.quantityAdded >= 0;
+                  return (
+                    <tr key={mvt.id || idx}>
+                      <td className="date-cell">
+                        {d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      </td>
+                      <td className="time-cell">
+                        {d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td className="product-cell">{mvt.productName}</td>
+                      <td className="combo-cell">{mvt.combinationLabel || '—'}</td>
+                      <td>
+                        <span className={`movement-badge ${isIn ? 'badge-in' : 'badge-out'}`}>
+                          {isIn ? 'Entrée' : 'Sortie'}
+                        </span>
+                      </td>
+                      <td className={`movement-cell ${isIn ? 'positive' : 'negative'}`}>
+                        {mvt.quantityAdded > 0 ? '+' : ''}{mvt.quantityAdded}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );

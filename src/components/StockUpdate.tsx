@@ -157,7 +157,7 @@ export function StockUpdate() {
       {/* ── En-tête ── */}
       <header className="su-header">
         <div className="su-header-left">
-          <h2 className="su-title">Gestion des stocks</h2>
+          <h2 className="su-title">Gestion des stocks disponibles</h2>
           <span className="su-meta">{lines.length} référence{lines.length > 1 ? 's' : ''}</span>
         </div>
         <nav className="su-tabs">

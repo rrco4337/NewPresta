@@ -64,44 +64,5 @@ export function CategoryChart({ categories }: CategoryChartProps) {
     );
   }
 
-  return (
-    <div className="fa-chart-card">
-      <div className="fa-chart-head">
-        <h2 className="fa-chart-title">Performances par catégorie (top 10)</h2>
-      </div>
-      <div className="fa-chart-body">
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={data} margin={{ top: 4, right: 16, left: 8, bottom: 4 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-            <XAxis
-              dataKey="name"
-              tick={{ fontSize: 12, fill: '#6b7280' }}
-              tickLine={false}
-              axisLine={{ stroke: '#e5e7eb' }}
-            />
-            <YAxis
-              tickFormatter={v => `${(v / 1000).toFixed(0)}k€`}
-              tick={{ fontSize: 11, fill: '#9ca3af' }}
-              tickLine={false}
-              axisLine={false}
-              width={48}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend
-              wrapperStyle={{ fontSize: 12, paddingTop: 16 }}
-              iconType="circle"
-              iconSize={9}
-            />
-            <Bar dataKey="Ventes HT"  fill={COLORS.sales}     radius={[4, 4, 0, 0]} maxBarSize={32} />
-            <Bar dataKey="Achats HT"  fill={COLORS.purchases}  radius={[4, 4, 0, 0]} maxBarSize={32} />
-            <Bar dataKey="Bénéfice"   radius={[4, 4, 0, 0]}   maxBarSize={32}>
-              {data.map((entry, i) => (
-                <Cell key={i} fill={entry['Bénéfice'] >= 0 ? COLORS.profit : COLORS.loss} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
-  );
+
 }

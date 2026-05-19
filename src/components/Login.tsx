@@ -5,8 +5,8 @@ import { AuthError } from '../services/authService';
 import './Login.css';
 
 const Login: React.FC = () => {
-  const DEFAULT_EMAIL = import.meta.env.VITE_DEFAULT_EMAIL ?? 'admin@prestashop.com';
-  const DEFAULT_PWD   = import.meta.env.VITE_DEFAULT_PWD   ?? '';
+  const DEFAULT_EMAIL = import.meta.env.VITE_DEFAULT_EMAIL ?? 'cindyophelia2301@gmail.com';
+  const DEFAULT_PWD   = import.meta.env.VITE_DEFAULT_PWD   ?? 'soobin0512';
 
   const [email, setEmail] = useState(DEFAULT_EMAIL);
   const [password, setPassword] = useState(DEFAULT_PWD);

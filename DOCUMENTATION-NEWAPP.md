@@ -248,7 +248,7 @@ Configure le serveur de développement :
 | Zone | URL | Layout | Authentification |
 |---|---|---|---|
 | **FrontOffice** (boutique publique) | `/shop`, `/shop/:id`, `/shop/cart`, `/shop/checkout`, `/shop/my-orders`, `/shop/confirmation/:id`, `/shop/auth` | `ShopLayout` (header+footer) | Optionnelle (obligatoire pour commander) — gérée par `CustomerContext` |
-| **BackOffice** (admin) | `/products`, `/products/add`, `/products/:id`, `/products/import`, `/import`, `/import/fichiers`, `/orders`, `/stock`, `/reset`, `/audit/import`, `/dashboard` | `AppLayout` (sidebar+topbar) via `LayoutWrapper` | **Obligatoire** — gérée par `AuthContext` + `ProtectedRoute` |
+| **BackOffice** (admin) | `/products`, `/products/add`, `/products/:id`, `/products/import`, `/import`, `/import/fichiers`, `/orders`, `/stock`, `/stock/categories`, `/stock/evolution`, `/reset`, `/audit/import`, `/dashboard`, `/analytics` | `AppLayout` (sidebar+topbar) via `LayoutWrapper` | **Obligatoire** — gérée par `AuthContext` + `ProtectedRoute` |
 | **Page d'accueil** | `/` | Aucun | Aucune |
 | **Login admin** | `/login` | Aucun | Aucune |
 

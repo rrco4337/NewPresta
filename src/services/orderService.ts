@@ -1,0 +1,581 @@
+import axios from 'axios';
+import { stockService } from './stockService';
+import { getStockAvailableId, setStock } from './fichierImportService';
+
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
+  headers: { 'Content-Type': 'application/xml', 'Accept': 'application/xml' },
+});
+
+// ==========================================
+// TYPES
+// ==========================================
+
+export interface CartRow {
+  productId: string;
+  combinationId: string; // '0' pour produit simple
+  quantity: number;
+}
+
+export interface PSOrder {
+  id: string;
+  reference: string;
+  customerId: string;
+  customerName: string;
+  totalPaid: number;
+  date: string;
+  currentState: number;
+  // Ajouts pour la transformation
+  id_address_delivery?: string;
+  id_address_invoice?: string;
+  id_carrier?: string;
+  id_currency?: string;
+  cartRows?: CartRow[];
+}
+
+
+// 📦 Les 4 statuts selon les spécifications J2 (avec LIVRÉ)
+export const PS_STATE_LABELS: Record<number, string> = {
+  1:  '📦 Dans le panier',      // État panier (cart non validé)
+  2:  '✅ Paiement effectué',    // Commande validée + paiement OK
+  5:  '🚚 Livré',               // Commande livrée — déclenche le mouvement de stock
+  6:  '❌ Annulé',               // Commande annulée
+};
+
+// Liste des états modifiables dans le backoffice
+export const ALLOWED_PS_STATES = [
+  { label: '📦 Dans le panier',      value: 1 },
+  { label: '✅ Paiement effectué',   value: 2 },
+  { label: '🚚 Livré',              value: 5 },
+  { label: '❌ Annulé',              value: 6 },
+];
+
+// ✅ Vérifier si une transition est autorisée
+export function isTransitionAllowed(oldState: number, newState: number): boolean {
+  // Règle 1: Le panier (1) peut devenir payé (2) ou annulé (6)
+  if (oldState === 1 && (newState === 2 || newState === 6)) {
+    return true;
+  }
+
+  // Règle 2: Payé (2) peut devenir livré (5) ou annulé (6)
+  if (oldState === 2 && (newState === 5 || newState === 6)) {
+    return true;
+  }
+
+  // Règle 3: Livré (5) peut devenir annulé (6) — retour après livraison
+  if (oldState === 5 && newState === 6) {
+    return true;
+  }
+
+  // Règle 4: Annulé (6) peut redevenir payé (2) - cas rare mais possible
+  if (oldState === 6 && newState === 2) {
+    return true;
+  }
+
+  // Même état ou retour vers panier (1) : interdit
+  return false;
+}
+
+// ==========================================
+// PRESTASHOP ORDERS
+// ==========================================
+
+async function fetchCustomerName(customerId: string): Promise<string> {
+  try {
+    const res = await api.get(`/customers/${customerId}?display=[firstname,lastname]`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const first = doc.querySelector('firstname')?.textContent?.trim() ?? '';
+    const last  = doc.querySelector('lastname')?.textContent?.trim()  ?? '';
+    return `${first} ${last}`.trim() || `Client #${customerId}`;
+  } catch { 
+    return `Client #${customerId}`; 
+  }
+}
+
+function parseOrdersXml(xmlString: string): (Omit<PSOrder, 'customerName'> & { cartId?: string })[] {
+  const doc = new DOMParser().parseFromString(xmlString, 'text/xml');
+  const orders: (Omit<PSOrder, 'customerName'> & { cartId?: string })[] = [];
+  
+  doc.querySelectorAll('order').forEach((el) => {
+    const id = el.querySelector('id')?.textContent?.trim() ?? '';
+    const cartId = el.querySelector('id_cart')?.textContent?.trim() ?? '';  // 🔥 Clé !
+    const reference = el.querySelector('reference')?.textContent?.trim() ?? '';
+    const customerId = el.querySelector('id_customer')?.textContent?.trim() ?? '';
+    const totalPaid = parseFloat(el.querySelector('total_paid_tax_incl')?.textContent ?? '0');
+    const date = el.querySelector('date_add')?.textContent?.trim() ?? '';
+    const currentState = parseInt(el.querySelector('current_state')?.textContent ?? '0', 10);
+    
+    if (id) {
+      orders.push({ 
+        id, 
+        cartId,  // Sauvegarder pour le filtrage
+        reference: reference || id,
+        customerId, 
+        totalPaid, 
+        date, 
+        currentState 
+      });
+    }
+  });
+  
+  return orders;
+}
+
+export async function fetchPSOrders(): Promise<PSOrder[]> {
+  try {
+    // 1️⃣ Récupérer toutes les commandes
+    const ordersRes = await api.get('/orders?display=full');
+    const orders = parseOrdersXml(ordersRes.data);
+    
+    // 2️⃣ Extraire les IDs des paniers déjà transformés en commandes
+    const cartIdsAlreadyOrdered = new Set(
+      orders
+        .map(o => o.cartId)      // Il faut récupérer id_cart depuis la commande
+        .filter(id => id)        // Éliminer les vides
+    );
+    
+    // 3️⃣ Récupérer les paniers
+    const cartsRes = await api.get('/carts?display=full');
+    const allCarts = await parseCartsXml(cartsRes.data);
+    
+    // 4️⃣ 🔥 FILTRER : garder uniquement les paniers NON transformés en commande
+    const pendingCarts = allCarts.filter(
+      cart => !cartIdsAlreadyOrdered.has(cart.id)
+    );
+    
+    // 5️⃣ Fusionner commandes + paniers en attente
+    const allItems = [...orders, ...pendingCarts];
+    
+    // 6️⃣ Enrichir avec noms clients
+    const enriched = await Promise.all(
+      allItems.map(async (item) => ({
+        ...item,
+        customerName: await fetchCustomerName(item.customerId),
+      }))
+    );
+    
+    return enriched;
+  } catch {
+    return [];
+  }
+}
+
+// Cache pour éviter de re-fetcher le même produit plusieurs fois
+const productPriceCache = new Map<string, number>();
+const combinationPriceCache = new Map<string, number>();
+const taxRateCache = new Map<string, number>();
+
+async function fetchTaxRate(taxRulesGroupId: string): Promise<number> {
+  if (!taxRulesGroupId || taxRulesGroupId === '0') return 0;
+  if (taxRateCache.has(taxRulesGroupId)) return taxRateCache.get(taxRulesGroupId)!;
+
+  try {
+    // 1️⃣ Trouver l'id_tax lié à ce groupe
+    const rulesRes = await api.get(
+      `/tax_rules?filter[id_tax_rules_group]=[${taxRulesGroupId}]&display=[id_tax]`
+    );
+    const rulesDoc = new DOMParser().parseFromString(rulesRes.data, 'text/xml');
+    const taxId = rulesDoc.querySelector('id_tax')?.textContent?.trim();
+
+    if (!taxId || taxId === '0') { taxRateCache.set(taxRulesGroupId, 0); return 0; }
+
+    // 2️⃣ Lire le taux depuis /taxes/:id
+    const taxRes = await api.get(`/taxes/${taxId}?display=[rate]`);
+    const taxDoc = new DOMParser().parseFromString(taxRes.data, 'text/xml');
+    const rate   = parseFloat(taxDoc.querySelector('rate')?.textContent?.trim() ?? '0');
+
+    taxRateCache.set(taxRulesGroupId, rate);
+    return rate;
+  } catch {
+    taxRateCache.set(taxRulesGroupId, 0);
+    return 0;
+  }
+}
+
+/**
+ * Retourne le prix TTC d'un produit.
+ * L'API PS ne fournit pas price_tax_incl → on calcule : HT × (1 + TVA/100).
+ */
+async function fetchProductPrice(productId: string): Promise<number> {
+  if (productPriceCache.has(productId)) return productPriceCache.get(productId)!;
+
+  try {
+    const res = await api.get(`/products/${productId}?display=[price,id_tax_rules_group]`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+
+    const priceHt    = parseFloat(doc.querySelector('price')?.textContent?.trim() ?? '0');
+    const taxGroupId = doc.querySelector('id_tax_rules_group')?.textContent?.trim() ?? '0';
+    const taxRate    = await fetchTaxRate(taxGroupId);
+    const priceTtc   = priceHt * (1 + taxRate / 100);
+
+    console.log(`Produit ${productId} — HT: ${priceHt}, TVA: ${taxRate}%, TTC: ${priceTtc}`);
+
+    productPriceCache.set(productId, priceTtc);
+    return priceTtc;
+  } catch {
+    console.warn(`Impossible de récupérer le prix du produit ${productId}`);
+    return 0;
+  }
+}
+
+/**
+ * Retourne l'impact TTC d'une déclinaison.
+ * L'impact dans /combinations est en HT → même conversion via TVA du produit parent.
+ */
+async function fetchCombinationPriceImpact(comboId: string, productId?: string): Promise<number> {
+  if (combinationPriceCache.has(comboId)) return combinationPriceCache.get(comboId)!;
+
+  try {
+    const res = await api.get(`/combinations/${comboId}?display=[price,id_product]`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+
+    const impactHt = parseFloat(doc.querySelector('price')?.textContent?.trim() ?? '0');
+    const pid      = productId ?? doc.querySelector('id_product')?.textContent?.trim() ?? '0';
+
+    let taxRate = 0;
+    if (pid && pid !== '0') {
+      const pRes = await api.get(`/products/${pid}?display=[id_tax_rules_group]`);
+      const pDoc = new DOMParser().parseFromString(pRes.data, 'text/xml');
+      const taxGroupId = pDoc.querySelector('id_tax_rules_group')?.textContent?.trim() ?? '0';
+      taxRate = await fetchTaxRate(taxGroupId);
+    }
+
+    const impactTtc = impactHt * (1 + taxRate / 100);
+    console.log(`Combinaison ${comboId} — Impact HT: ${impactHt}, TVA: ${taxRate}%, TTC: ${impactTtc}`);
+
+    combinationPriceCache.set(comboId, impactTtc);
+    return impactTtc;
+  } catch {
+    return 0;
+  }
+}
+
+
+async function parseCartsXml(
+  xmlString: string
+): Promise<Omit<PSOrder, 'customerName'>[]> {
+  const doc = new DOMParser().parseFromString(xmlString, 'text/xml');
+  const cartEls = Array.from(doc.querySelectorAll('cart'));
+
+  const carts = await Promise.all(
+    cartEls.map(async (el) => {
+      const id = el.querySelector('id')?.textContent?.trim() ?? '';
+      if (!id) return null;
+
+      const customerId = el.querySelector('id_customer')?.textContent?.trim() ?? '';
+      const date = el.querySelector('date_add')?.textContent?.trim() ?? '';
+      
+      // On garantit ici que ce sont des strings (jamais undefined)
+      const id_address_delivery = el.querySelector('id_address_delivery')?.textContent?.trim() ?? '0';
+      const id_address_invoice = el.querySelector('id_address_invoice')?.textContent?.trim() ?? '0';
+      const id_carrier = el.querySelector('id_carrier')?.textContent?.trim() ?? '0';
+      const id_currency = el.querySelector('id_currency')?.textContent?.trim() ?? '1';
+
+      const rows = Array.from(
+        el.querySelectorAll('associations cart_rows cart_row, cart_rows cart_row, cart_row')
+      );
+
+      const cartRows: CartRow[] = rows
+        .map(row => ({
+          productId:     row.querySelector('id_product')?.textContent?.trim() ?? '',
+          combinationId: row.querySelector('id_product_attribute')?.textContent?.trim() ?? '0',
+          quantity:      parseInt(row.querySelector('quantity')?.textContent?.trim() ?? '0', 10),
+        }))
+        .filter(r => r.productId && r.quantity > 0);
+
+      const rowTotals = await Promise.all(
+        cartRows.map(async (row) => {
+          if (!row.productId || row.quantity === 0) return 0;
+          const basePrice   = await fetchProductPrice(row.productId);
+          const priceImpact = row.combinationId !== '0'
+          ? await fetchCombinationPriceImpact(row.combinationId, row.productId)
+          : 0;
+          return (basePrice + priceImpact) * row.quantity;
+        })
+      );
+
+      const totalPaid = rowTotals.reduce((sum, v) => sum + v, 0);
+
+      // On retourne l'objet directement
+      return {
+        id,
+        reference: `PANIER-${id}`,
+        customerId,
+        totalPaid,
+        date,
+        currentState: 1,
+        id_address_delivery,
+        id_address_invoice,
+        id_carrier,
+        id_currency,
+        cartRows,
+      };
+    })
+  );
+
+  // Correction du filtre : on utilise un type assertion plus simple ici
+  return carts.filter((c): c is NonNullable<typeof c> => c !== null);
+}
+
+export async function transformCartToOrder(order: PSOrder, newState: number): Promise<boolean> {
+  try {
+    // ── Étape 1 : Créer la commande (sans current_state, PS le gère) ──────────
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order>
+    <id_address_delivery><![CDATA[${order.id_address_delivery}]]></id_address_delivery>
+    <id_address_invoice><![CDATA[${order.id_address_invoice}]]></id_address_invoice>
+    <id_cart><![CDATA[${order.id}]]></id_cart>
+    <id_currency><![CDATA[${order.id_currency || '1'}]]></id_currency>
+    <id_lang><![CDATA[1]]></id_lang>
+    <id_customer><![CDATA[${order.customerId}]]></id_customer>
+    <id_carrier><![CDATA[${order.id_carrier}]]></id_carrier>
+    <module><![CDATA[ps_checkpayment]]></module>
+    <payment><![CDATA[Paiement manuel (Backoffice)]]></payment>
+    <total_paid><![CDATA[${order.totalPaid}]]></total_paid>
+    <total_paid_real><![CDATA[${order.totalPaid}]]></total_paid_real>
+    <total_products><![CDATA[${order.totalPaid}]]></total_products>
+    <total_products_wt><![CDATA[${order.totalPaid}]]></total_products_wt>
+    <conversion_rate><![CDATA[1]]></conversion_rate>
+  </order>
+</prestashop>`;
+
+    const createRes = await api.post('/orders', xml);
+
+    // ── Étape 2 : Extraire le nouvel ID de commande depuis la réponse XML ─────
+    const doc = new DOMParser().parseFromString(createRes.data, 'text/xml');
+    const newOrderId = doc.querySelector('order > id')?.textContent?.trim();
+
+    if (!newOrderId) {
+      console.error('transformCartToOrder: impossible de lire le nouvel ID commande', createRes.data);
+      return false;
+    }
+
+    // ── Étape 3 : Appliquer le bon état via order_histories ───────────────────
+    const stateUpdated = await updatePSOrderStatus(newOrderId, newState);
+
+    if (!stateUpdated) {
+      console.warn(`Commande ${newOrderId} créée mais mise à jour du statut ${newState} échouée.`);
+      // La commande existe quand même, on ne renvoie pas false
+    }
+
+    return true;
+  } catch (error) {
+    console.error(`Erreur transformation panier ${order.id}:`, error);
+    return false;
+  }
+}
+
+export async function updatePSOrderStatus(orderId: string, stateId: number): Promise<boolean> {
+  // 🔒 Vérification supplémentaire avant envoi à l'API
+  // On ne devrait jamais envoyer une transition vers panier (1)
+  // car c'est interdit par isTransitionAllowed, mais sécurité supplémentaire
+  if (stateId === 1) {
+    console.error(`Tentative interdite: impossible de passer la commande ${orderId} en statut "panier" (1)`);
+    return false;
+  }
+  
+  try {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+  <order_history>
+    <id_order><![CDATA[${orderId}]]></id_order>
+    <id_order_state><![CDATA[${stateId}]]></id_order_state>
+    <id_employee><![CDATA[1]]></id_employee>
+  </order_history>
+</prestashop>`;
+    
+    await api.post('/order_histories', xml);
+    
+    // 📦 Si le statut est "livré", on enregistre un mouvement de sortie de stock
+    // L'ID du statut "livré" dépend de votre configuration PrestaShop
+    // À ajuster selon votre base : généralement 4 ou 5 pour "livré"
+    const STATUS_LIVRE = 5; // ⚠️ À remplacer par l'ID réel du statut "livré" dans votre PS
+    
+   if (stateId === STATUS_LIVRE) {
+  try {
+    const orderResponse = await api.get(
+      `/order_details?filter[id_order]=[${orderId}]&display=full`
+    );
+    const orderDoc = new DOMParser().parseFromString(orderResponse.data, 'text/xml');
+    const orderDetails = orderDoc.querySelectorAll('order_detail');
+
+    if (orderDetails.length === 0) {
+      console.warn(`Commande ${orderId} : aucun order_detail trouvé`);
+    }
+
+    for (const detail of orderDetails) {
+      const productId = detail.querySelector('product_id')?.textContent?.trim();
+      const productAttributeId = detail.querySelector('product_attribute_id')?.textContent?.trim() || '0';
+      const productQuantity = parseInt(
+        detail.querySelector('product_quantity')?.textContent?.trim() || '0'
+      );
+
+      if (!productId || productQuantity === 0) continue;
+
+      // ✅ Même fonction que dans fichierImportService
+      const stockId = await getStockAvailableId(productId, productAttributeId);
+
+      if (!stockId) {
+        console.error(`❌ Stock non trouvé pour produit ${productId}/${productAttributeId}`);
+        continue;
+      }
+
+      // ✅ setStock gère la lecture du stock actuel, le PUT et le mouvement
+      const orderDate = new Date().toISOString().slice(0, 19).replace('T', ' ');
+      
+      // Lire la quantité actuelle pour calculer la nouvelle
+      const res = await api.get(`/stock_availables/${stockId}?display=[quantity]`);
+      const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+      const currentQty = parseInt(doc.querySelector('quantity')?.textContent ?? '0', 10);
+      const newQty = Math.max(0, currentQty - productQuantity);
+
+      await setStock(stockId, productId, productAttributeId, newQty, orderDate, currentQty);
+
+      console.log(`✓ Stock mis à jour: produit ${productId} | ${currentQty} → ${newQty}`);
+    }
+  } catch (stockError: any) {
+    console.error(`Erreur stock commande ${orderId}:`, stockError?.response?.data ?? stockError);
+  }
+}
+    
+    return true;
+  } catch (error) {
+    console.error(`Erreur updatePSOrderStatus pour ${orderId} -> ${stateId}:`, error);
+    return false;
+  }
+}
+
+// ==========================================
+// SUPPRESSION DES PANIERS
+// ==========================================
+
+export async function deletePSCart(cartId: string): Promise<boolean> {
+  try {
+    await api.delete(`/carts/${cartId}`);
+    return true;
+  } catch (error) {
+    console.error(`Erreur suppression panier ${cartId}:`, error);
+    return false;
+  }
+}
+
+export async function deleteZombieCarts(orders: PSOrder[]): Promise<{ deleted: number; failed: number }> {
+  const zombies = orders.filter(o => o.currentState === 1 && o.totalPaid === 0);
+  let deleted = 0;
+  let failed = 0;
+  for (const cart of zombies) {
+    const ok = await deletePSCart(cart.id);
+    if (ok) deleted++; else failed++;
+  }
+  return { deleted, failed };
+}
+
+// ==========================================
+// FONCTIONS UTILITAIRES POUR LE STATISTIQUES
+// ==========================================
+
+export function getOrdersStats(orders: PSOrder[]) {
+  const paniers = orders.filter(o => o.currentState === 1);
+  const payees = orders.filter(o => o.currentState === 2);
+  const livrees = orders.filter(o => o.currentState === 5);
+  const annulees = orders.filter(o => o.currentState === 6);
+  
+  const montantTotalPaye = payees.reduce((sum, o) => sum + o.totalPaid, 0);
+  const montantTotalPaniers = paniers.reduce((sum, o) => sum + o.totalPaid, 0);
+  const montantTotalLivrees = livrees.reduce((sum, o) => sum + o.totalPaid, 0);
+  
+  return {
+    total: orders.length,
+    paniers: paniers.length,
+    payees: payees.length,
+    livrees: livrees.length,
+    annulees: annulees.length,
+    montantTotalPaye,
+    montantTotalPaniers,
+    montantTotalLivrees,
+  };
+}
+
+// ==========================================
+// LIGNES D'UNE COMMANDE EXISTANTE
+// ==========================================
+
+export async function fetchOrderRows(orderId: string): Promise<CartRow[]> {
+  try {
+    const res = await api.get(`/orders/${orderId}?display=full`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const details = Array.from(doc.querySelectorAll('order_detail, order_row'));
+    return details
+      .map(el => ({
+        productId:     el.querySelector('product_id')?.textContent?.trim() ?? '',
+        combinationId: el.querySelector('product_attribute_id')?.textContent?.trim() ?? '0',
+        quantity:      parseInt(el.querySelector('product_quantity')?.textContent?.trim() ?? '0', 10),
+      }))
+      .filter(r => r.productId && r.quantity > 0);
+  } catch {
+    return [];
+  }
+}
+
+  // ==========================================
+// LIGNES DES COMMANDES PAYÉES (POUR FINANCIAL)
+// ==========================================
+
+/**
+ * Récupère toutes les lignes des commandes ayant le statut "Paiement effectué" (state 2)
+ * avec le prix unitaire TTC.
+ * @returns tableau d'objets { productId, quantity, unit_price_tax_incl }
+ */
+export async function fetchPaidOrderRows(): Promise<{ productId: number; quantity: number; unit_price_tax_incl: number }[]> {
+  const allOrders = await fetchPSOrders();
+  const paidOrders = allOrders.filter(order => order.currentState === 2);
+  const rows: { productId: number; quantity: number; unit_price_tax_incl: number }[] = [];
+
+  for (const order of paidOrders) {
+    const orderRows = await fetchOrderRows(order.id);
+    for (const row of orderRows) {
+      const unitPrice = await fetchOrderRowUnitPrice(order.id, row.productId);
+      rows.push({
+        productId: parseInt(row.productId),
+        quantity: row.quantity,
+        unit_price_tax_incl: unitPrice,
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * Récupère le prix unitaire TTC d'un produit dans une commande spécifique
+ */
+async function fetchOrderRowUnitPrice(orderId: string, productId: string): Promise<number> {
+  try {
+    const res = await api.get(`/order_details`, {
+      params: {
+        filter: `[id_order]=${orderId}&[product_id]=${productId}`,
+        display: 'full',
+      },
+    });
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+    const price = doc.querySelector('unit_price_tax_incl')?.textContent;
+    return parseFloat(price || '0');
+  } catch (error) {
+    console.error(`Erreur récupération prix unitaire pour commande ${orderId}, produit ${productId}`, error);
+    return 0;
+  }
+}
+
+// N'oubliez pas d'ajouter fetchPaidOrderRows à l'objet orderService si vous utilisez un objet exporté
+// Par exemple, si vous avez déjà un objet orderService, ajoutez-y ces nouvelles fonctions.
+export const orderService = {
+  fetchPSOrders,
+  updatePSOrderStatus,
+  fetchOrderRows,
+  transformCartToOrder,
+  deletePSCart,
+  deleteZombieCarts,
+  getOrdersStats,
+  fetchPaidOrderRows,     // <-- ajout
+  // fetchOrderRowUnitPrice n'est pas exposée car privée
+};

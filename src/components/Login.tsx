@@ -5,8 +5,11 @@ import { AuthError } from '../services/authService';
 import './Login.css';
 
 const Login: React.FC = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const DEFAULT_EMAIL = import.meta.env.VITE_DEFAULT_EMAIL ?? 'cindyophelia2301@gmail.com';
+  const DEFAULT_PWD   = import.meta.env.VITE_DEFAULT_PWD   ?? 'soobin0512';
+
+  const [email, setEmail] = useState(DEFAULT_EMAIL);
+  const [password, setPassword] = useState(DEFAULT_PWD);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -17,7 +20,7 @@ const Login: React.FC = () => {
   // Si déjà connecté, rediriger vers la page d'origine ou l'accueil
   useEffect(() => {
     if (user) {
-      const from = (location.state as { from?: Location })?.from?.pathname || '/';
+      const from = (location.state as { from?: Location })?.from?.pathname || '/products';
       navigate(from, { replace: true });
     }
   }, [user, navigate, location]);

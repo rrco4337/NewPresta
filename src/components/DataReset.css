@@ -1,0 +1,390 @@
+/* ── Page ──────────────────────────────────────────────────────────────────── */
+.reset-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Idle card ─────────────────────────────────────────────────────────────── */
+.reset-idle-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.reset-warning-banner {
+  display: flex;
+  gap: 16px;
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.reset-warning-icon {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  background: #ef4444;
+  color: #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.reset-warning-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b91c1c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 6px;
+}
+
+.reset-warning-text {
+  font-size: 14px;
+  color: #374151;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.reset-entity-list {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.reset-entity-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+  margin: 0 0 12px;
+}
+
+.reset-entity-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.reset-entity-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.reset-entity-dot {
+  width: 6px;
+  height: 6px;
+  background: #94a3b8;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Confirm card ──────────────────────────────────────────────────────────── */
+.reset-confirm-card {
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 16px;
+  padding: 40px 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(239,68,68,0.08);
+  width: 100%;
+}
+
+.reset-confirm-icon {
+  width: 56px;
+  height: 56px;
+  background: #fef2f2;
+  border: 2px solid #fecaca;
+  color: #ef4444;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.reset-confirm-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.reset-confirm-text {
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.6;
+  max-width: 400px;
+  margin: 0;
+}
+
+.reset-confirm-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* ── Running card ──────────────────────────────────────────────────────────── */
+.reset-running-card {
+  width: 100%;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.reset-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e2e8f0;
+  border-top-color: #ef4444;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.reset-running-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0;
+}
+
+.reset-step-info {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-step-label {
+  font-size: 14px;
+  color: #475569;
+}
+
+.reset-global-info {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.reset-global-label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.reset-progress-bar {
+  width: 100%;
+  max-width: 420px;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.reset-progress-fill {
+  height: 100%;
+  background: #ef4444;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.reset-progress-bar--global {
+  max-width: 420px;
+  height: 4px;
+}
+
+.reset-progress-fill--global {
+  background: #94a3b8;
+}
+
+.reset-step-pct {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ef4444;
+}
+
+/* ── Steps done list ───────────────────────────────────────────────────────── */
+.reset-steps-done {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.reset-step-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.reset-step-row--ok {
+  background: #f0fdf4;
+}
+
+.reset-step-row--error {
+  background: #fff5f5;
+}
+
+.reset-step-dot {
+  font-weight: 700;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.reset-step-row--ok .reset-step-dot    { color: #16a34a; }
+.reset-step-row--error .reset-step-dot { color: #dc2626; }
+
+.reset-step-name {
+  flex: 1;
+  color: #334155;
+}
+
+.reset-step-count {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.reset-step-err {
+  font-size: 12px;
+  color: #dc2626;
+}
+
+/* ── Done card ─────────────────────────────────────────────────────────────── */
+.reset-done-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.reset-done-icon {
+  width: 56px;
+  height: 56px;
+  background: #f0fdf4;
+  border: 2px solid #bbf7d0;
+  color: #16a34a;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.reset-done-icon--warn {
+  background: #fefce8;
+  border-color: #fef08a;
+  color: #ca8a04;
+}
+
+.reset-done-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.reset-done-stats {
+  display: flex;
+  gap: 16px;
+}
+
+.reset-done-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 16px 24px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.reset-done-stat--ok {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.reset-done-stat--err {
+  background: #fff5f5;
+  border-color: #fecaca;
+}
+
+.reset-done-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.reset-done-stat--ok .reset-done-stat-value  { color: #16a34a; }
+.reset-done-stat--err .reset-done-stat-value { color: #dc2626; }
+
+.reset-done-stat-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ── Boutons ───────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s;
+}
+
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary   { background: #6366f1; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #4f46e5; }
+
+.btn-secondary { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+.btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
+
+.btn-danger-large {
+  background: #ef4444;
+  color: #fff;
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+  align-self: flex-start;
+}
+.btn-danger-large:hover:not(:disabled) { background: #dc2626; }

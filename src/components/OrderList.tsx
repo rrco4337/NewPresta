@@ -1,0 +1,297 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import {
+  fetchPSOrders,
+  updatePSOrderStatus,
+  fetchOrderRows,
+  ALLOWED_PS_STATES,
+  PS_STATE_LABELS,
+  type PSOrder,
+  transformCartToOrder,
+  deleteZombieCarts,
+} from '../services/orderService';
+import { stockService } from '../services/stockService';
+import './OrderList.css';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr.replace(' ', 'T'));
+  if (isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function formatAmount(n: number): string {
+  return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+}
+
+function psStatusLabel(state: number): string {
+  return PS_STATE_LABELS[state] ?? `État ${state}`;
+}
+
+function orderStatusClass(state: number): string {
+  if (state === 1) return 'status-badge--cart';
+  if (state === 2) return 'status-badge--paid';
+  if (state === 5) return 'status-badge--delivered';
+  if (state === 8) return 'status-badge--error';
+  if (state === 6) return 'status-badge--cancelled';
+  return 'status-badge--default';
+}
+
+// ── Composant ─────────────────────────────────────────────────────────────────
+
+const OrderList: React.FC = () => {
+  const [orders, setOrders] = useState<PSOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [pendingChange, setPendingChange] = useState<{
+    order: PSOrder;
+    newValue: number;
+    oldValue: number;
+  } | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [deletingZombies, setDeletingZombies] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const ps = await fetchPSOrders();
+      ps.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
+      setOrders(ps);
+    } catch {
+      setError('Impossible de charger les commandes.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Vérifier si la transition est autorisée
+  const isTransitionAllowed = (oldState: number, newState: number): boolean => {
+    // Règle: "dans le panier" (1) → paiement effectué (2) ou annulé (6)
+    if (oldState === 1 && (newState === 2 || newState === 6)) {
+      return true;
+    }
+    // paiement effectué (2) → livré (5) ou annulé (6)
+    if (oldState === 2 && (newState === 5 || newState === 6)) {
+      return true;
+    }
+    // livré (5) → annulé (6) - cas de retour
+    if (oldState === 5 && newState === 6) {
+      return true;
+    }
+    // annulé (6) → paiement effectué (2) - cas rare
+    if (oldState === 6 && newState === 2) {
+      return true;
+    }
+    // Même état : pas de changement
+    if (oldState === newState) {
+      return false;
+    }
+    // TOUT VERS "dans le panier" (1) : INTERDIT
+    if (newState === 1) {
+      return false;
+    }
+    return false;
+  };
+
+  const handleSelectChange = (order: PSOrder, newValue: string) => {
+    const newState = parseInt(newValue, 10);
+    const oldState = order.currentState;
+    
+    if (!isTransitionAllowed(oldState, newState)) {
+      alert(`Transition impossible : "${psStatusLabel(oldState)}" → "${psStatusLabel(newState)}" n'est pas autorisée.`);
+      return;
+    }
+    
+    setPendingChange({ order, newValue: newState, oldValue: oldState });
+  };
+
+  const handleConfirmChange = async () => {
+    if (!pendingChange) return;
+    setApplying(true);
+    const { order, newValue, oldValue } = pendingChange;
+
+    try {
+      let success = false;
+      
+      // CAS SPÉCIFIQUE : Panier (1) -> Commande (2 ou 6)
+      if (oldValue === 1 && (newValue === 2 || newValue === 6)) {
+        success = await transformCartToOrder(order, newValue);
+      } else {
+        // CAS CLASSIQUE : Changement de statut d'une commande existante
+        success = await updatePSOrderStatus(order.id, newValue);
+      }
+
+      if (success) {
+        // Enregistrer les mouvements de stock selon la transition
+        const ref = order.reference || `#${order.id}`;
+        
+        // Transition 1→2 (panier → paiement effectué) : sortie de stock
+        if (oldValue === 1 && newValue === 2) {
+          const rows = order.cartRows?.length
+            ? order.cartRows
+            : await fetchOrderRows(order.id);
+          stockService.recordOrderMovements(rows, ref, 'sortie').catch(() => {});
+        }
+        // Transition 2→5 (paiement effectué → livré) : pas de mouvement (déjà sorti)
+        else if (oldValue === 2 && newValue === 5) {
+          console.log(`[Livraison] Commande ${ref} marquée comme livrée - aucun mouvement de stock`);
+        }
+        // Transition 2→6 ou 5→6 (annulation) : retour en stock
+        else if (newValue === 6 && (oldValue === 2 || oldValue === 5)) {
+          const rows = await fetchOrderRows(order.id);
+          stockService.recordOrderMovements(rows, ref, 'entree').catch(() => {});
+        }
+        
+        // Rafraîchir la liste
+        await load();
+      }
+    } catch (err) {
+      setError("L'opération a échoué.");
+    } finally {
+      setApplying(false);
+      setPendingChange(null);
+    }
+  };
+
+  const handleCancelChange = () => setPendingChange(null);
+
+  const zombieCount = orders.filter(o => o.currentState === 1 && o.totalPaid === 0).length;
+
+  const handleDeleteZombies = async () => {
+    if (zombieCount === 0) return;
+    if (!window.confirm(`Supprimer ${zombieCount} panier(s) vide(s) (0,00 €) ? Cette action est irréversible.`)) return;
+    setDeletingZombies(true);
+    const { deleted, failed } = await deleteZombieCarts(orders);
+    setDeletingZombies(false);
+    if (failed > 0) {
+      alert(`${deleted} panier(s) supprimé(s), ${failed} échec(s).`);
+    }
+    await load();
+  };
+
+  const getAvailableOptions = (currentState: number): { value: number; label: string }[] => {
+    const allOptions = ALLOWED_PS_STATES;
+    return allOptions.filter(opt => {
+      if (opt.value === currentState) return true;
+      return isTransitionAllowed(currentState, opt.value);
+    });
+  };
+
+  const paidCount = orders.filter(o => o.currentState === 2).length;
+  const deliveredCount = orders.filter(o => o.currentState === 5).length;
+  const cancelledCount = orders.filter(o => o.currentState === 6).length;
+
+  return (
+    <div className="orders-page">
+      {/* Confirmation modale */}
+      {pendingChange && (
+        <div className="orders-modal-overlay">
+          <div className="orders-modal">
+            <h3 className="orders-modal-title">Confirmer le changement</h3>
+            <p className="orders-modal-text">
+              Modifier le statut de la commande <strong>#{pendingChange.order.reference || pendingChange.order.id}</strong> ?
+            </p>
+            <div className="orders-modal-state-change">
+              <span className="old-state">{psStatusLabel(pendingChange.oldValue)}</span>
+              <span className="arrow">→</span>
+              <span className="new-state">{psStatusLabel(pendingChange.newValue)}</span>
+            </div>
+            <div className="orders-modal-actions">
+              <button className="btn btn-secondary" onClick={handleCancelChange} disabled={applying}>
+                Annuler
+              </button>
+              <button className="btn btn-primary" onClick={handleConfirmChange} disabled={applying}>
+                {applying ? 'En cours…' : 'Confirmer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="orders-toolbar">
+        <button className="btn btn-secondary" onClick={load} disabled={loading}>
+          {loading ? 'Chargement…' : 'Actualiser'}
+        </button>
+        {zombieCount > 0 && (
+          <button
+            className="btn btn-danger"
+            onClick={handleDeleteZombies}
+            disabled={deletingZombies || loading}
+            title="Supprimer tous les paniers sans produit (0,00 €)"
+          >
+            {deletingZombies ? 'Suppression…' : `Supprimer ${zombieCount} panier(s) vide(s)`}
+          </button>
+        )}
+        <span className="orders-count">
+          {orders.length} élément(s) ({orders.filter(o => o.currentState === 1).length} panier(s), {paidCount} payée(s), {deliveredCount} livrée(s), {cancelledCount} annulée(s))
+        </span>
+      </div>
+
+      {error && <p className="orders-error">{error}</p>}
+
+      {loading && orders.length === 0 ? (
+        <div className="orders-loading">Chargement des commandes…</div>
+      ) : orders.length === 0 ? (
+        <div className="orders-empty">Aucune commande ou panier trouvé.</div>
+      ) : (
+        <div className="orders-table-wrapper">
+          <table className="orders-table">
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Client</th>
+                <th>Montant TTC</th>
+                <th>Date</th>
+                <th>Statut</th>
+                <th>Modifier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((order) => {
+                const currentValue = String(order.currentState);
+                const availableOptions = getAvailableOptions(order.currentState);
+
+                return (
+                  <tr key={order.id} className={order.currentState === 1 ? 'order-row--cart' : ''}>
+                    <td className="orders-cell-ref">
+                      {order.currentState === 1 && <span className="cart-icon">🛒</span>}
+                      #{order.reference || order.id}
+                    </td>
+                    <td>{order.customerName}</td>
+                    <td className="orders-cell-amount">{formatAmount(order.totalPaid)}</td>
+                    <td>{formatDate(order.date)}</td>
+                    <td>
+                      <span className={`status-badge ${orderStatusClass(order.currentState)}`}>
+                        {psStatusLabel(order.currentState)}
+                      </span>
+                    </td>
+                    <td>
+                      <select
+                        className="orders-status-select"
+                        value={currentValue}
+                        onChange={(e) => handleSelectChange(order, e.target.value)}
+                      >
+                        {availableOptions.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default OrderList;

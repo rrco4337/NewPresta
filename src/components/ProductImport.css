@@ -1,0 +1,498 @@
+/* ── Page wrapper ─────────────────────────────────────────────────────────── */
+.import-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ── Dropzone ─────────────────────────────────────────────────────────────── */
+.import-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 48px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  background: #f8fafc;
+}
+
+.import-dropzone:hover,
+.import-dropzone--over {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.import-dropzone-icon {
+  width: 40px;
+  height: 40px;
+  color: #94a3b8;
+  margin-bottom: 8px;
+}
+
+.import-dropzone-text {
+  font-size: 15px;
+  color: #334155;
+  margin: 0;
+}
+
+.import-dropzone-sub {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.import-file-input {
+  display: none;
+}
+
+/* ── Section title ────────────────────────────────────────────────────────── */
+.import-section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1e293b;
+  margin: 0 0 12px;
+}
+
+/* ── Validation summary chips ─────────────────────────────────────────────── */
+.import-validation-summary {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.import-validation-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.import-validation-chip-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.import-validation-chip--valid {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.import-validation-chip--warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.import-validation-chip--error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* ── Blocking error banner ────────────────────────────────────────────────── */
+.import-blocking-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #b91c1c;
+  margin-bottom: 12px;
+}
+
+/* ── Table ────────────────────────────────────────────────────────────────── */
+.import-table-wrapper {
+  overflow-x: auto;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+}
+
+.import-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.import-table th {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  padding: 10px 14px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.import-table td {
+  padding: 10px 14px;
+  color: #334155;
+  border-bottom: 1px solid #f1f5f9;
+  vertical-align: middle;
+}
+
+.import-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.import-table code {
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #475569;
+}
+
+/* ── Row states ───────────────────────────────────────────────────────────── */
+.import-row--valid td {
+  background: #f0fdf4;
+}
+
+.import-row--success td {
+  background: #f0fdf4;
+}
+
+.import-row--error td {
+  background: #fff5f5;
+}
+
+.import-row--warning td {
+  background: #fffbeb;
+}
+
+/* ── Detail row (errors/warnings inline) ──────────────────────────────────── */
+.import-detail-row td {
+  padding-top: 0 !important;
+  padding-bottom: 10px !important;
+  border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.import-error-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.import-error-item {
+  font-size: 12px;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.import-error-icon {
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.import-warning-item {
+  font-size: 12px;
+  color: #b45309;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.import-warning-icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.import-detail {
+  color: #64748b;
+  font-size: 12px;
+  max-width: 280px;
+}
+
+/* ── Badges ───────────────────────────────────────────────────────────────── */
+.import-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.import-badge--success {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.import-badge--error {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.import-badge--warning {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.import-badge--muted {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+/* ── Barre de progression ─────────────────────────────────────────────────── */
+.import-progress-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 40px;
+  background: #f8fafc;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+}
+
+.import-progress-label {
+  font-size: 14px;
+  color: #475569;
+  margin: 0;
+}
+
+.import-progress-bar {
+  width: 100%;
+  max-width: 480px;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.import-progress-fill {
+  height: 100%;
+  background: #6366f1;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.import-progress-pct {
+  font-size: 13px;
+  color: #6366f1;
+  font-weight: 600;
+  margin: 0;
+}
+
+/* ── Stats rapport ────────────────────────────────────────────────────────── */
+.import-stats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.import-stat {
+  flex: 1;
+  min-width: 140px;
+  border-radius: 10px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid transparent;
+}
+
+.import-stat--success {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.import-stat--error {
+  background: #fff5f5;
+  border-color: #fecaca;
+}
+
+.import-stat--total {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.import-stat-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1e293b;
+  line-height: 1;
+}
+
+.import-stat--success .import-stat-value { color: #16a34a; }
+.import-stat--error   .import-stat-value { color: #dc2626; }
+
+.import-stat-label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+/* ── Boutons ──────────────────────────────────────────────────────────────── */
+.import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  border: none;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.btn-primary {
+  background: #6366f1;
+  color: #fff;
+}
+
+.btn-primary:hover { background: #4f46e5; }
+
+.btn--disabled,
+.btn--disabled:hover {
+  background: #cbd5e1;
+  color: #94a3b8;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-secondary {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #e2e8f0;
+}
+
+.btn-secondary:hover { background: #e2e8f0; }
+
+/* ── Sélecteur de type (CatalogImport) ───────────────────────────────────── */
+.import-type-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.import-type-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #475569;
+}
+
+.import-type-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.import-type-tab {
+  padding: 7px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.import-type-tab:hover {
+  border-color: #6366f1;
+  color: #6366f1;
+}
+
+.import-type-tab--active {
+  background: #6366f1;
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.import-type-hint {
+  font-size: 12px;
+  color: #94a3b8;
+  margin: 0;
+}
+
+.import-type-hint code {
+  background: #f1f5f9;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.import-cell-truncate {
+  display: inline-block;
+  max-width: 200px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+
+/* ── Zone de nettoyage (danger) ──────────────────────────────────────────── */
+.import-danger-zone {
+  border: 1px solid #fecaca;
+  border-radius: 10px;
+  background: #fff5f5;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.import-danger-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.import-danger-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b91c1c;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.import-danger-warning {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: #fff;
+  align-self: flex-start;
+}
+
+.btn-danger:hover { background: #dc2626; }
+
+.import-clean-result {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+
+.import-clean-ok  { color: #16a34a; font-weight: 600; }
+.import-clean-err { color: #dc2626; font-weight: 600; }

@@ -64,6 +64,23 @@ export interface PSCustomerOrder {
   currentState: number;
   dateAdd: string;
 }
+export interface OrderDetailRow {
+  productId: string;
+  combinationId: string;
+  quantity: number;
+  productName: string;
+  unitPriceTaxIncl: number;
+  unitPriceTaxExcl: number;
+}
+
+export interface StockCheckResult {
+  productId: string;
+  combinationId: string;
+  productName: string;
+  needed: number;
+  available: number;
+  ok: boolean;
+}
 
 // ── Customers ─────────────────────────────────────────────────────────────────
 
@@ -528,4 +545,76 @@ export async function getCustomerOrders(customerId: string): Promise<PSCustomerO
     console.error('Failed to fetch customer orders:', error);
     return [];
   }
+}
+export async function getOrderFullDetail(orderId: string): Promise<{
+  rows: OrderDetailRow[];
+  addressId: string;
+  carrierId: string;
+  currencyId: string;
+} | null> {
+  try {
+    const res = await api.get(`/orders/${orderId}?display=full`);
+    const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+
+    const addressId  = doc.querySelector('id_address_delivery')?.textContent?.trim() ?? '0';
+    const carrierId  = doc.querySelector('id_carrier')?.textContent?.trim() ?? '0';
+    const currencyId = doc.querySelector('id_currency')?.textContent?.trim() ?? '1';
+
+    const rows: OrderDetailRow[] = [];
+    doc.querySelectorAll('order_row').forEach(el => {
+      const productId        = el.querySelector('product_id')?.textContent?.trim() ?? '';
+      const combinationId    = el.querySelector('product_attribute_id')?.textContent?.trim() ?? '0';
+      const quantity         = parseInt(el.querySelector('product_quantity')?.textContent?.trim() ?? '0', 10);
+      const productName      = el.querySelector('product_name')?.textContent?.trim() ?? `Produit #${productId}`;
+      const unitPriceTaxIncl = parseFloat(el.querySelector('unit_price_tax_incl')?.textContent?.trim() ?? '0');
+      const unitPriceTaxExcl = parseFloat(el.querySelector('unit_price_tax_excl')?.textContent?.trim() ?? '0');
+      if (productId && quantity > 0) {
+        rows.push({ productId, combinationId, quantity, productName, unitPriceTaxIncl, unitPriceTaxExcl });
+      }
+    });
+
+    return { rows, addressId, carrierId, currencyId };
+  } catch {
+    return null;
+  }
+}
+
+export async function checkStockForRows(
+  rows: OrderDetailRow[],
+  times: number
+): Promise<StockCheckResult[]> {
+  const results: StockCheckResult[] = [];
+
+  for (const row of rows) {
+    const needed = row.quantity * times;
+    try {
+      const combFilter = row.combinationId !== '0'
+        ? `&filter[id_product_attribute]=[${row.combinationId}]`
+        : `&filter[id_product_attribute]=[0]`;
+      const res = await api.get(
+        `/stock_availables?display=[id,quantity]&filter[id_product]=[${row.productId}]${combFilter}`
+      );
+      const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+      const available = parseInt(doc.querySelector('quantity')?.textContent ?? '0', 10);
+      results.push({
+        productId:     row.productId,
+        combinationId: row.combinationId,
+        productName:   row.productName,
+        needed,
+        available,
+        ok: available >= needed,
+      });
+    } catch {
+      results.push({
+        productId:     row.productId,
+        combinationId: row.combinationId,
+        productName:   row.productName,
+        needed,
+        available: 0,
+        ok: false,
+      });
+    }
+  }
+
+  return results;
 }

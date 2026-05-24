@@ -31,7 +31,31 @@ const api = axios.create({
 // ==========================================
 
 /** Parser CSV générique : gère les champs entre guillemets et les virgules internes */
-function parseCsvLine(line: string): string[] {
+async function readFileText(file: File): Promise<string> {
+  let text = await readFileText(file);
+  // Strip BOM UTF-8 (U+FEFF) produit par Excel
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  // Si UTF-8 a produit des caractères de remplacement (U+FFFD), le fichier est Latin-1
+  if (text.includes('�')) {
+    const buffer = await file.arrayBuffer();
+    let latin = new TextDecoder('windows-1252').decode(buffer);
+    if (latin.charCodeAt(0) === 0xFEFF) latin = latin.slice(1);
+    return latin;
+  }
+  return text;
+}
+
+function detectSeparator(firstLine: string): string {
+  let inQ = false;
+  const counts: Record<string, number> = { ',': 0, ';': 0, '\t': 0 };
+  for (const ch of firstLine) {
+    if (ch === '"') { inQ = !inQ; continue; }
+    if (!inQ && ch in counts) counts[ch]++;
+  }
+  return Object.entries(counts).reduce((a, b) => (b[1] > a[1] ? b : a), [',', 0] as [string, number])[0];
+}
+
+function parseCsvLine(line: string, sep = ','): string[] {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -40,7 +64,7 @@ function parseCsvLine(line: string): string[] {
     if (ch === '"') {
       if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
       else { inQuotes = !inQuotes; }
-    } else if (ch === ',' && !inQuotes) {
+    } else if (ch === sep && !inQuotes) {
       result.push(current.trim()); current = '';
     } else {
       current += ch;
@@ -51,10 +75,10 @@ function parseCsvLine(line: string): string[] {
 }
 
 function parseCsvContent(content: string): string[][] {
-  return content
-    .split(/\r?\n/)
-    .filter((l) => l.trim() !== '')
-    .map(parseCsvLine);
+  const lines = content.split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (lines.length === 0) return [];
+  const sep = detectSeparator(lines[0]);
+  return lines.map((l) => parseCsvLine(l, sep));
 }
 
 function normalizeHeader(value: string): string {
@@ -477,7 +501,7 @@ export async function importFichier1(
   taxRateCache         = new Map();
   productDateCache     = new Map();
  
-  const lines  = parseCsvContent(await file.text());
+  const lines  = parseCsvContent(await readFileText(file));
   const header = lines[0] ?? [];
   const cols   = resolveFichier1Columns(header);
   const rows   = lines.slice(1)
@@ -673,7 +697,7 @@ export async function importFichier2(
   optionValueCache   = new Map();
   optionValuePending = new Map();
  
-  const lines = parseCsvContent(await file.text());
+  const lines = parseCsvContent(await readFileText(file));
   const rows  = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
     .filter(({ row }) => row[0]);
@@ -802,7 +826,7 @@ function parseAchat(raw: string): Array<{ reference: string; qty: number; varian
     const parts    = stripped.split(';');
     return {
       reference: parts[0]?.replace(/"/g, '').trim() ?? '',
-      qty:       parseInt(parts[1]?.trim() ?? '1', 10) || 1,
+      qty:       (() => { const q = parseInt(parts[1]?.trim() ?? '', 10); return Number.isNaN(q) ? 1 : q; })(),
       variant:   parts[2]?.replace(/"/g, '').trim() ?? '',
     };
   }).filter((it) => it.reference);
@@ -895,6 +919,8 @@ async function buildCheckoutItems(items: Array<{ reference: string; qty: number;
   const result: CheckoutItem[] = [];
 
   for (const item of items) {
+    if (item.qty <= 0) throw new Error(`Quantité invalide (${item.qty}) pour le produit "${item.reference}"`);
+
     const product = await fetchProductByReference(item.reference);
     if (!product) throw new Error(`Produit "${item.reference}" introuvable`);
 
@@ -926,7 +952,19 @@ async function buildCheckoutItems(items: Array<{ reference: string; qty: number;
     });
   }
 
-  return result;
+  // Merge duplicate (product, variant) entries — PrestaShop rejects carts with
+  // two rows for the same (id_product, id_product_attribute).
+  const merged = new Map<string, CheckoutItem>();
+  for (const item of result) {
+    const key = `${item.id}:${item.attributeId ?? '0'}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.qty += item.qty;
+    } else {
+      merged.set(key, { ...item });
+    }
+  }
+  return Array.from(merged.values());
 }
 
  
@@ -936,7 +974,7 @@ export async function importFichier3(
 ): Promise<FichierImportResult[]> {
   customerPending = new Map();
  
-  const lines = parseCsvContent(await file.text());
+  const lines = parseCsvContent(await readFileText(file));
   const rows  = lines.slice(1)
     .map((r, idx) => ({ row: r, csvLine: idx + 2 }))
     .filter(({ row }) => row[1]);
@@ -1212,7 +1250,7 @@ async function prevalidateFichier1Internal(
   onProgress: PrevalidateCallbacks['fichier1'],
   productExistsCache: Map<string, boolean>,
 ): Promise<{ results: FichierImportResult[]; context: PrevalidateContext }> {
-  const lines = parseCsvContent(await file.text());
+  const lines = parseCsvContent(await readFileText(file));
   const header = lines[0] ?? [];
 
   // Règle 1 : validation des en-têtes
@@ -1301,7 +1339,7 @@ async function prevalidateFichier2Internal(
   productExistsCache: Map<string, boolean>,
   combinationExistsCache: Map<string, boolean>,
 ): Promise<{ results: FichierImportResult[]; combinationRefs: Set<string> }> {
-  const lines = parseCsvContent(await file.text());
+  const lines = parseCsvContent(await readFileText(file));
   const header = lines[0] ?? [];
 
   // Règle 1 : validation des en-têtes
@@ -1403,7 +1441,7 @@ async function prevalidateFichier3Internal(
   combinationExistsCache: Map<string, boolean>,
   customerExistsCache: Map<string, boolean>,
 ): Promise<FichierImportResult[]> {
-  const lines = parseCsvContent(await file.text());
+  const lines = parseCsvContent(await readFileText(file));
   const header = lines[0] ?? [];
 
   // Règle 1 : validation des en-têtes

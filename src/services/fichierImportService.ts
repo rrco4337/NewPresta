@@ -32,7 +32,7 @@ const api = axios.create({
 
 /** Parser CSV générique : gère les champs entre guillemets et les virgules internes */
 async function readFileText(file: File): Promise<string> {
-  let text = await readFileText(file);
+  let text = await file.text();
   // Strip BOM UTF-8 (U+FEFF) produit par Excel
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
   // Si UTF-8 a produit des caractères de remplacement (U+FFFD), le fichier est Latin-1

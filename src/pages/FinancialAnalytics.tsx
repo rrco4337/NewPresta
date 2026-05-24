@@ -47,6 +47,7 @@ export default function FinancialAnalytics() {
     categories, 
     allCategories, 
     totalStockValue,  // AJOUTÉ : récupérer la valeur du stock
+     totalStockPurchaseValue,
     loading, 
     error, 
     refetch 
@@ -111,7 +112,11 @@ export default function FinancialAnalytics() {
           </p>
           {/* CORRECTION : Passer totalStockValue */}
           <GlobalCards global={global} totalStockValue={totalStockValue} />
+
+
         </div>
+
+        
       )}
 
     

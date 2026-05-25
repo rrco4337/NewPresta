@@ -221,7 +221,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children, pageTitle }) => {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <span className="sidebar-logo">PS</span>
-          {!collapsed && <span className="sidebar-brand-name">PrestaShop</span>}
+          {!collapsed && <span className="sidebar-brand-name">PrestaShop 3118</span>}
         </div>
 
         <nav className="sidebar-nav">

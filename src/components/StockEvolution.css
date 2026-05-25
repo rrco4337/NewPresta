@@ -17,14 +17,14 @@
 .stock-evolution-header h1 {
   font-size: 1.375rem;
   font-weight: 700;
-  color: #111827;
+  color: #1e293b;
   margin: 0;
 }
 
 /* ── Filtre produit ─────────────────────────────────────────────────────────── */
 .filters-card {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 16px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
@@ -210,7 +210,7 @@
 
 .stat-item {
   background: #fff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
   padding: 16px;
   text-align: center;

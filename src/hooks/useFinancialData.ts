@@ -5,7 +5,8 @@ import type { CategoryStats, FinancialFilters, FinancialGlobal } from '../types/
 interface FinancialState {
   global: FinancialGlobal | null;
   allCategories: CategoryStats[];      // Ventes par catégorie (période)
-  totalStockValue: number;              // Valeur totale du stock
+  totalStockValue: number; 
+  totalStockPurchaseValue: number;          // Valeur totale du stock
   stockByCategory: CategoryStats[];     // Stock par catégorie
   loading: boolean;
   error: string | null;
@@ -16,6 +17,7 @@ export function useFinancialData(filters: FinancialFilters) {
     global: null,
     allCategories: [],
     totalStockValue: 0,
+    totalStockPurchaseValue: 0,
     stockByCategory: [],
     loading: true,
     error: null,
@@ -33,6 +35,7 @@ export function useFinancialData(filters: FinancialFilters) {
             global: data.global, 
             allCategories: data.byCategory,
             totalStockValue: data.totalStockValue,
+             totalStockPurchaseValue: data.totalStockPurchaseValue, 
             stockByCategory: data.stockByCategory,
             loading: false, 
             error: null 
@@ -87,6 +90,7 @@ export function useFinancialData(filters: FinancialFilters) {
     
     // Données de stock (tous produits)
     totalStockValue: state.totalStockValue,      // Valeur brute totale du stock
+    totalStockPurchaseValue: state.totalStockPurchaseValue, 
     filteredStockValue,                          // Valeur du stock filtrée par catégorie
     stockByCategory: state.stockByCategory,      // Stock par catégorie (brut)
     filteredStockByCategory,                     // Stock par catégorie (filtré)

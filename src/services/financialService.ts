@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { productService } from './produitApi';
 import type { CategoryStats, FinancialFilters, FinancialGlobal, ProductStockInfo } from '../types/financial.types';
+import { stockService } from './stockService';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8080/api',
@@ -147,45 +148,60 @@ async function fetchOrderDetailRows(
 
 async function fetchAllProductsStockInfo(): Promise<ProductStockInfo[]> {
   try {
-    const products = await productService.getAllProducts();
+    const [products, stockAvailables] = await Promise.all([
+      productService.getAllProducts(),
+      api.get('/stock_availables?display=full').then(res => {
+        const doc = new DOMParser().parseFromString(res.data, 'text/xml');
+        return Array.from(doc.querySelectorAll('stock_available')).map(el => ({
+          productId: parseInt(el.querySelector('id_product')?.textContent ?? '0', 10),
+          comboId:   parseInt(el.querySelector('id_product_attribute')?.textContent ?? '0', 10),
+          physicalQty: parseInt(el.querySelector('quantity')?.textContent ?? '0', 10),
+          reservedQty: parseInt(el.querySelector('reserved_quantity')?.textContent ?? '0', 10),
+        }));
+      }),
+    ]);
 
-    // Récupération des stocks avec physical_quantity
-    let stockRes;
-    try {
-      stockRes = await api.get('/stock_availables?display=[id,id_product,id_product_attribute,quantity,physical_quantity]');
-      console.log('📦 Utilisation du stock physique');
-    } catch (error) {
-      console.warn('⚠️ physical_quantity indisponible → fallback sur quantity');
-      stockRes = await api.get('/stock_availables?display=[id,id_product,id_product_attribute,quantity]');
+    // ✅ Calcul correct du stock disponible
+    const stockEntries = stockAvailables.map(sa => ({
+      productId: sa.productId,
+      comboId: sa.comboId,
+      // Stock disponible = physique - réservé
+      qty: sa.physicalQty - sa.reservedQty,
+    }));
+
+    // Séparer simples / combinaisons
+    const simpleEntries = new Map<number, number>();
+    const comboEntries = new Map<string, number>();
+    const productsWithCombos = new Set<number>();
+
+    for (const { productId, comboId, qty } of stockEntries) {
+      if (!productId) continue;
+      // ✅ On garde même les négatifs (pour valorisation correcte)
+      if (comboId > 0) {
+        productsWithCombos.add(productId);
+        comboEntries.set(`${productId}_${comboId}`, qty);
+      } else {
+        simpleEntries.set(productId, qty);
+      }
     }
 
-    const stockDoc = new DOMParser().parseFromString(stockRes.data, 'text/xml');
-
-    // Collecter toutes les entrées avec le bon stock (physique si dispo)
-    const allEntries: Array<{
-      productId: number;
-      comboId: number;
-      qty: number;
-    }> = [];
-
-    stockDoc.querySelectorAll('stock_available').forEach(el => {
-      const productId = parseInt(el.querySelector('id_product')?.textContent ?? '0', 10);
-      const comboId = parseInt(el.querySelector('id_product_attribute')?.textContent ?? '0', 10);
-
-      // Essayer physical_quantity d'abord, sinon quantity
-      const physicalQty = parseInt(el.querySelector('physical_quantity')?.textContent ?? '0', 10);
-      const availableQty = parseInt(el.querySelector('quantity')?.textContent ?? '0', 10);
-      
-      // Préférer le stock physique, sinon fallback sur disponible
-      const qty = physicalQty > 0 ? physicalQty : availableQty;
-
-      if (productId && qty > 0) {
-        allEntries.push({ productId, comboId, qty });
+    const allEntries: Array<{ productId: number; comboId: number; qty: number }> = [];
+    
+    // Produits simples (sans combinaisons)
+    for (const [productId, qty] of simpleEntries) {
+      if (!productsWithCombos.has(productId)) {
+        allEntries.push({ productId, comboId: 0, qty });
       }
-    });
+    }
+    
+    // Combinaisons
+    for (const [key, qty] of comboEntries) {
+      const [pid, cid] = key.split('_').map(Number);
+      allEntries.push({ productId: pid, comboId: cid, qty });
+    }
 
     // Récupérer les prix de gros des combinaisons
-    let comboPriceMap = new Map<string, number>();
+    const comboPriceMap = new Map<string, number>();
     try {
       const comboRes = await api.get('/combinations?display=[id,id_product,wholesale_price]');
       const comboDoc = new DOMParser().parseFromString(comboRes.data, 'text/xml');
@@ -202,19 +218,14 @@ async function fetchAllProductsStockInfo(): Promise<ProductStockInfo[]> {
       console.warn('⚠️ Impossible de récupérer les prix des combinaisons', error);
     }
 
-    // Créer un map produit pour accès rapide
     const productMap = new Map(products.map(p => [Number(p.id), p]));
-
-    // Stocker par (productId_comboId) pour éviter les doublons
     const stockByCombo = new Map<string, { qty: number; wholesalePrice: number; categoryId: number }>();
 
     for (const entry of allEntries) {
       const key = `${entry.productId}_${entry.comboId}`;
       const product = productMap.get(entry.productId);
-      
       if (!product) continue;
 
-      // Déterminer le prix de gros
       let wholesalePrice = 0;
       if (entry.comboId > 0 && comboPriceMap.has(key)) {
         wholesalePrice = comboPriceMap.get(key)!;
@@ -226,33 +237,27 @@ async function fetchAllProductsStockInfo(): Promise<ProductStockInfo[]> {
 
       if (wholesalePrice > 0) {
         if (stockByCombo.has(key)) {
-          const existing = stockByCombo.get(key)!;
-          existing.qty += entry.qty;
+          stockByCombo.get(key)!.qty += entry.qty;
         } else {
-          stockByCombo.set(key, {
-            qty: entry.qty,
-            wholesalePrice,
-            categoryId,
+          stockByCombo.set(key, { 
+            qty: entry.qty, 
+            wholesalePrice, 
+            categoryId 
           });
         }
       }
     }
 
-    // Convertir en tableau ProductStockInfo
     const stockInfo: ProductStockInfo[] = [];
     let totalValue = 0;
 
     console.log('📊 Détail du calcul du stock :');
-    
     for (const [key, data] of stockByCombo.entries()) {
       const [productIdStr, comboIdStr] = key.split('_');
       const productId = parseInt(productIdStr, 10);
-      
       const value = data.wholesalePrice * data.qty;
       totalValue += value;
-      
       console.log(`ID ${productId} (combo ${comboIdStr || 'simple'}) : ${data.qty} × ${data.wholesalePrice} = ${value.toFixed(2)}`);
-      
       stockInfo.push({
         id_product: productId,
         wholesale_price: data.wholesalePrice,
@@ -312,105 +317,98 @@ function calculateStockValueByCategory(stockInfo: ProductStockInfo[], categoryNa
     .sort((a, b) => b.purchases - a.purchases);
 }
 
+
+
 export const financialService = {
-  async getFinancialData(
-    filters: FinancialFilters,
-  ): Promise<{ 
-    global: FinancialGlobal; 
-    byCategory: CategoryStats[];
-    totalStockValue: number;
-    stockByCategory: CategoryStats[];
-  }> {
-    const { dateFrom, dateTo } = computeDateRange(filters);
+ async getFinancialData(
+  filters: FinancialFilters,
+): Promise<{ 
+  global: FinancialGlobal; 
+  byCategory: CategoryStats[];      // ← UNIQUEMENT les ventes de la période
+  totalStockValue: number;
+  stockByCategory: CategoryStats[];  // ← UNIQUEMENT le stock (sans les ventes)
+}> {
+  const { dateFrom, dateTo } = computeDateRange(filters);
 
-    const [categoryNameMap, products, orderIds, allProductsStock] = await Promise.all([
-      fetchCategoryNames(),
-      productService.getAllProducts(),
-      fetchValidatedOrderIds(dateFrom, dateTo),
-      fetchAllProductsStockInfo(),
-    ]);
-    
-    const totalStockValue = calculateTotalStockValue(allProductsStock);
-    const stockByCategory = calculateStockValueByCategory(allProductsStock, categoryNameMap);
-    
-    const productMap = new Map<number, any>(products.map(p => [Number(p.id), p]));
-
-    console.log('[financialService] Produits chargés:', products.length, '| Commandes valides:', orderIds.length);
-
-    // Agrégation ventes HT et COGS par produit
-    const salesByProduct = new Map<number, number>();
-    const cogsByProduct = new Map<number, number>();
-
-    for (const orderId of orderIds) {
-      console.log(`[financialService] Traitement commande ${orderId}...`);
-      const rows = await fetchOrderDetailRows(orderId);
-      for (const row of rows) {
-        const product = productMap.get(row.productId);
-        const salesValue = row.quantity * row.unitPriceHT;
-        const wholesalePrice = product?.wholesale_price ?? 0;
-        const cogsValue = row.quantity * wholesalePrice;
-        if (!product) {
-          console.warn(`[financialService]   productId=${row.productId} INTROUVABLE dans le catalogue (produit supprimé ?)`);
-        } else {
-          console.log(`[financialService]   productId=${row.productId} wholesale_price=${wholesalePrice} → ventes=${salesValue.toFixed(2)} COGS=${cogsValue.toFixed(2)}`);
-        }
-        salesByProduct.set(row.productId, (salesByProduct.get(row.productId) ?? 0) + salesValue);
-        cogsByProduct.set(row.productId, (cogsByProduct.get(row.productId) ?? 0) + cogsValue);
-      }
-    }
-
-    console.log('[financialService] RÉSUMÉ salesByProduct:', Object.fromEntries(salesByProduct));
-    console.log('[financialService] RÉSUMÉ cogsByProduct:', Object.fromEntries(cogsByProduct));
-
-    // Agrégation par catégorie (toutes catégories présentes dans le catalogue)
-    const catMap = new Map<number, { name: string; sales: number; purchases: number }>();
-
-    for (const prod of products) {
-      const catId = typeof prod.id_category_default === 'string' 
-        ? parseInt(prod.id_category_default, 10) 
-        : prod.id_category_default;
-      if (!catId) continue;
-      
-      const productId = Number(prod.id);
-      const sales = salesByProduct.get(productId) ?? 0;
-      const cogs = cogsByProduct.get(productId) ?? 0;
-
-      if (!catMap.has(catId)) {
-        catMap.set(catId, {
-          name: categoryNameMap.get(catId) ?? `Catégorie ${catId}`,
-          sales: 0,
-          purchases: 0,
-        });
-      }
-      const entry = catMap.get(catId)!;
-      entry.sales += sales;
-      entry.purchases += cogs;
-    }
-
-    const soldByCategory: CategoryStats[] = Array.from(catMap.entries())
-      .map(([id, data]) => ({
-        categoryId: id,
-        categoryName: data.name,
-        sales: data.sales,
-        purchases: data.purchases,
-        profit: data.sales - data.purchases,
-      }))
-      .sort((a, b) => b.sales - a.sales);
-
-    const totalSales = soldByCategory.reduce((s, c) => s + c.sales, 0);
-    const totalPurchases = soldByCategory.reduce((s, c) => s + c.purchases, 0);
-
-    return {
-      global: { totalSales, totalPurchases, profit: totalSales - totalPurchases },
-      byCategory: soldByCategory,
-      totalStockValue,
-      stockByCategory,
-    };
-  },
+  const [categoryNameMap, products, orderIds, allProductsStock] = await Promise.all([
+    fetchCategoryNames(),
+    productService.getAllProducts(),
+    fetchValidatedOrderIds(dateFrom, dateTo),
+    fetchAllProductsStockInfo(), // ← ta fonction corrigée avec physical - reserved
+  ]);
   
-  async getStockInfo(): Promise<{ totalStockValue: number; products: ProductStockInfo[] }> {
-    const products = await fetchAllProductsStockInfo();
-    const totalStockValue = calculateTotalStockValue(products);
-    return { totalStockValue, products };
-  },
+  const totalStockValue = calculateTotalStockValue(allProductsStock);
+  const stockByCategory = calculateStockValueByCategory(allProductsStock, categoryNameMap);
+  
+  const productMap = new Map(products.map(p => [Number(p.id), p]));
+
+  // ==========================================
+  // 1. AGRÉGATION DES VENTES UNIQUEMENT
+  // ==========================================
+  const salesByProduct = new Map<number, number>();    // CA HT vendu
+  const cogsByProduct = new Map<number, number>();     // Prix d'achat des vendus
+
+  for (const orderId of orderIds) {
+    const rows = await fetchOrderDetailRows(orderId);
+    for (const row of rows) {
+      const product = productMap.get(row.productId);
+      const salesValue = row.quantity * row.unitPriceHT;
+      const wholesalePrice = product?.wholesale_price ?? 0;
+      const cogsValue = row.quantity * wholesalePrice;
+      
+      salesByProduct.set(row.productId, (salesByProduct.get(row.productId) ?? 0) + salesValue);
+      cogsByProduct.set(row.productId, (cogsByProduct.get(row.productId) ?? 0) + cogsValue);
+    }
+  }
+
+  // ==========================================
+  // 2. AGRÉGATION PAR CATÉGORIE (UNIQUEMENT VENTES)
+  // ==========================================
+  const catMap = new Map<number, { name: string; sales: number; purchases: number }>();
+
+  for (const prod of products) {
+    const catId = typeof prod.id_category_default === 'string' 
+      ? parseInt(prod.id_category_default, 10) 
+      : prod.id_category_default;
+    if (!catId) continue;
+    
+    const productId = Number(prod.id);
+    const sales = salesByProduct.get(productId) ?? 0;
+    const cogs = cogsByProduct.get(productId) ?? 0;
+    
+    // ✅ On ignore les produits sans vente
+    if (sales === 0 && cogs === 0) continue;
+    
+    if (!catMap.has(catId)) {
+      catMap.set(catId, {
+        name: categoryNameMap.get(catId) ?? `Catégorie ${catId}`,
+        sales: 0,
+        purchases: 0,
+      });
+    }
+    const entry = catMap.get(catId)!;
+    entry.sales += sales;
+    entry.purchases += cogs;  // ← UNIQUEMENT le coût des vendus, PAS le stock
+  }
+
+  const soldByCategory: CategoryStats[] = Array.from(catMap.entries())
+    .map(([id, data]) => ({
+      categoryId: id,
+      categoryName: data.name,
+      sales: data.sales,
+      purchases: data.purchases,  // = prix d'achat des produits vendus
+      profit: data.sales - data.purchases,
+    }))
+    .sort((a, b) => b.sales - a.sales);
+
+  const totalSales = soldByCategory.reduce((s, c) => s + c.sales, 0);
+  const totalPurchases = soldByCategory.reduce((s, c) => s + c.purchases, 0);
+
+  return {
+    global: { totalSales, totalPurchases, profit: totalSales - totalPurchases },
+    byCategory: soldByCategory,           // ← UNIQUEMENT les ventes
+    totalStockValue,                       // ← Valeur totale du stock
+    stockByCategory,                       // ← Stock par catégorie
+  };
+},
 };

@@ -82,17 +82,17 @@ export function GlobalCards({ global, totalStockValue }: GlobalCardsProps) {
         </div>
       </div>
 
-      {/* Nouvelle carte pour la valeur du stock */}
-      {/* <div className="fa-kpi-card">
+
+      { <div className="fa-kpi-card">
         <div className="fa-kpi-icon fa-kpi-icon--purple">
           <IconStock />
         </div>
         <div className="fa-kpi-body">
           <p className="fa-kpi-label">Valeur totale du stock</p>
-          <p className="fa-kpi-value">{formatCurrency(totalStockValue)}</p>
+          <p className="fa-kpi-value">{formatCurrency(totalStockValue + global.totalPurchases) } </p>
           <p className="fa-kpi-subtitle">Coût d'achat total</p>
         </div>
-      </div> */}
+      </div> }
     </div>
   );
 }

@@ -10,6 +10,7 @@ import ProductList from './components/ProductList';
 import ProductCreate from './components/ProductCreate';
 import ProductImport from './components/ProductImport';
 import CatalogImport from './components/CatalogImport';
+import StockRemove from './components/StockRemove';
 import FichiersImport from './components/FichiersImport';
 import OrderList from './components/OrderList';
 import DataReset from './components/DataReset';
@@ -62,6 +63,7 @@ function App() {
           <Routes>
             {/* ── Page de selection utilisateur ── */}
             <Route path="/" element={<UserSelectPage />} />
+            <Route path="/stock-remove" element={<StockRemove/>}/>
 
             {/* ── Route publique login ── */}
             <Route path="/login" element={<Login />} />

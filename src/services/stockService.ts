@@ -622,7 +622,54 @@ export const stockService = {
 
     return lines;
   },
-
+getReservedStock: async (productId: string, combinationId?: string | null): Promise<number> => {
+  try {
+    // Récupérer toutes les commandes non livrées
+    const ordersRes = await api.get('/orders?display=full');
+    const doc = new DOMParser().parseFromString(ordersRes.data, 'text/xml');
+    
+    let totalReserved = 0;
+    const orders = Array.from(doc.querySelectorAll('order'));
+    
+    for (const order of orders) {
+      const currentState = parseInt(order.querySelector('current_state')?.textContent?.trim() ?? '0', 10);
+      
+      // Seules les commandes non livrées (état 1 ou 2) réservent du stock
+      if (currentState !== 1 && currentState !== 2) continue;
+      
+      const orderId = order.querySelector('id')?.textContent?.trim();
+      if (!orderId) continue;
+      
+      try {
+        // Récupérer les détails de la commande
+        const orderDetailsRes = await api.get(`/orders/${orderId}?display=full`);
+        const orderDoc = new DOMParser().parseFromString(orderDetailsRes.data, 'text/xml');
+        
+        const orderRows = orderDoc.querySelectorAll('order_detail, order_row');
+        
+        for (const row of orderRows) {
+          const prodId = row.querySelector('product_id')?.textContent?.trim() ?? '';
+          const attrId = row.querySelector('product_attribute_id')?.textContent?.trim() ?? '0';
+          const quantity = parseInt(row.querySelector('product_quantity')?.textContent?.trim() ?? '0', 10);
+          
+          // Vérifier si c'est le bon produit et la bonne déclinaison
+          const targetAttrId = (combinationId && combinationId !== '0') ? combinationId : '0';
+          
+          if (prodId === productId && attrId === targetAttrId && quantity > 0) {
+            totalReserved += quantity;
+          }
+        }
+      } catch (err) {
+        console.warn(`Impossible de récupérer les détails de la commande ${orderId}`);
+      }
+    }
+    
+    return totalReserved;
+  } catch (err) {
+    console.error('[getReservedStock] Erreur:', err);
+    return 0;
+  }
+},
   addStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
     if (qty <= 0) throw new Error('La quantité doit être > 0');
 

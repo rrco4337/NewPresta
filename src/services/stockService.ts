@@ -1,6 +1,8 @@
 import axios from 'axios';
 import type { AxiosInstance } from 'axios';
 
+import type { productService } from './produitApi';
+
 // ==========================================
 // 1. TYPES
 // ==========================================
@@ -43,7 +45,20 @@ export interface CategoryStock {
   reservedQuantity: number;
   availableQuantity: number;
 }
-
+export interface CategoryStockDecreaseReport {
+  categoryId: number;
+  quantity:number;
+  affectedCount:number;
+  theoricalTotal: number;
+  realizedCount: number;
+  realizedTotal:number;
+  skipped:Array<{
+    productId: string;
+    productName: string;
+    combinationLable: string;
+    avalaible:number;
+  }>;
+}
 // ==========================================
 // 2. AXIOS INSTANCES
 // ==========================================
@@ -622,7 +637,54 @@ export const stockService = {
 
     return lines;
   },
-
+getReservedStock: async (productId: string, combinationId?: string | null): Promise<number> => {
+  try {
+    // Récupérer toutes les commandes non livrées
+    const ordersRes = await api.get('/orders?display=full');
+    const doc = new DOMParser().parseFromString(ordersRes.data, 'text/xml');
+    
+    let totalReserved = 0;
+    const orders = Array.from(doc.querySelectorAll('order'));
+    
+    for (const order of orders) {
+      const currentState = parseInt(order.querySelector('current_state')?.textContent?.trim() ?? '0', 10);
+      
+      // Seules les commandes non livrées (état 1 ou 2) réservent du stock
+      if (currentState !== 1 && currentState !== 2) continue;
+      
+      const orderId = order.querySelector('id')?.textContent?.trim();
+      if (!orderId) continue;
+      
+      try {
+        // Récupérer les détails de la commande
+        const orderDetailsRes = await api.get(`/orders/${orderId}?display=full`);
+        const orderDoc = new DOMParser().parseFromString(orderDetailsRes.data, 'text/xml');
+        
+        const orderRows = orderDoc.querySelectorAll('order_detail, order_row');
+        
+        for (const row of orderRows) {
+          const prodId = row.querySelector('product_id')?.textContent?.trim() ?? '';
+          const attrId = row.querySelector('product_attribute_id')?.textContent?.trim() ?? '0';
+          const quantity = parseInt(row.querySelector('product_quantity')?.textContent?.trim() ?? '0', 10);
+          
+          // Vérifier si c'est le bon produit et la bonne déclinaison
+          const targetAttrId = (combinationId && combinationId !== '0') ? combinationId : '0';
+          
+          if (prodId === productId && attrId === targetAttrId && quantity > 0) {
+            totalReserved += quantity;
+          }
+        }
+      } catch (err) {
+        console.warn(`Impossible de récupérer les détails de la commande ${orderId}`);
+      }
+    }
+    
+    return totalReserved;
+  } catch (err) {
+    console.error('[getReservedStock] Erreur:', err);
+    return 0;
+  }
+},
   addStock: async (line: StockLine, qty: number, note = ''): Promise<StockLine> => {
     if (qty <= 0) throw new Error('La quantité doit être > 0');
 
@@ -948,8 +1010,72 @@ export const stockService = {
     return getStockByCategoryStatic();
   },
 
+  // decreaseStockByCategoriy: async(
+  //   categoryId: number,
+  //   quantity:number,
+
+  // ):Promise<CategoryStockDecreaseReport > => {
+  //   if(categoryId)
+  // },
+
   getReservedQuantitiesByProduct: async (ordersXml: string): Promise<Map<string, number>> => {
     return getReservedQuantitiesByProductStatic(ordersXml);
+  },
+
+  decreaseStockByCategory: async (
+    categoryId: number,
+    quantityPerLine: number
+  ): Promise<Array<{
+    productId: string;
+    productName: string;
+    combinationLabel: string;
+    qtyWanted: number;
+    qtyActuallyRemoved: number;
+  }>> => {
+    const productsRes = await api.get(`/products?filter[id_category_default]=[${categoryId}]&display=full`);
+    const root = getRoot(parseXML(productsRes.data));
+    const container = root && isObj(root.products) ? root.products : null;
+    const rawProducts = toArray((container as any)?.product);
+
+    const categoryProductIds = new Set<string>();
+    for (const p of rawProducts) {
+      if (!isObj(p)) continue;
+      const id = String((p as any).id ?? '');
+      if (id) categoryProductIds.add(id);
+    }
+
+    if (categoryProductIds.size === 0) return [];
+
+    const allLines = await stockService.getAllStockLines();
+    const categoryLines = allLines.filter(l => categoryProductIds.has(l.productId));
+
+    const results: Array<{
+      productId: string;
+      productName: string;
+      combinationLabel: string;
+      qtyWanted: number;
+      qtyActuallyRemoved: number;
+    }> = [];
+
+    for (const line of categoryLines) {
+      const actualRemove = Math.min(quantityPerLine, line.quantity);
+      if (actualRemove > 0) {
+        try {
+          await stockService.removeStock(line, actualRemove);
+        } catch (err) {
+          console.warn(`[decreaseStockByCategory] Impossible de retirer le stock pour ${line.productName}:`, err);
+        }
+      }
+      results.push({
+        productId: line.productId,
+        productName: line.productName,
+        combinationLabel: line.combinationLabel,
+        qtyWanted: quantityPerLine,
+        qtyActuallyRemoved: actualRemove,
+      });
+    }
+
+    return results;
   },
 
   calculateStockByCategory: (

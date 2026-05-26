@@ -11,6 +11,7 @@ import {
 } from '../services/shopService';
 import ProductBadge from './ProductBadge';
 import { getProductBadge, parseAvailabilityDate } from '../utils/productBadges';
+import RemoveStockModal from './RemoveStockModal';
 
 type BadgeFilter = 'all' | 'hot' | 'new';
 type SortKey = 'default' | 'price-asc' | 'price-desc' | 'newest';
@@ -119,6 +120,7 @@ const ShopHome: React.FC = () => {
   const [dateRef, setDateRef]   = useState(() => searchParams.get('date') ?? '');
 
   const { addItem } = useCart();
+  const [showRemoveStock, setShowRemoveStock] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebSearch(searchInput), 300);
@@ -583,13 +585,31 @@ const ShopHome: React.FC = () => {
             {selectedCategoryName ?? 'Les collections du moment'}
           </h2>
         </div>
-        <span style={{
-          padding: '4px 14px', borderRadius: '999px',
-          background: '#ecedf5', border: '1px solid #d0d7e1',
-          fontSize: '0.78rem', fontWeight: 700, color: '#6b7a99',
-        }}>
-          {filtered.length} référence{filtered.length !== 1 ? 's' : ''}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{
+            padding: '4px 14px', borderRadius: '999px',
+            background: '#ecedf5', border: '1px solid #d0d7e1',
+            fontSize: '0.78rem', fontWeight: 700, color: '#6b7a99',
+          }}>
+            {filtered.length} référence{filtered.length !== 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={() => setShowRemoveStock(true)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '6px 16px', borderRadius: '999px',
+              border: '1.5px solid #fecaca', background: '#fff5f5',
+              fontSize: '0.78rem', fontWeight: 700, color: '#dc2626',
+              cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={e => { const el = e.currentTarget; el.style.background = '#fee2e2'; el.style.borderColor = '#f87171'; }}
+            onMouseLeave={e => { const el = e.currentTarget; el.style.background = '#fff5f5'; el.style.borderColor = '#fecaca'; }}
+          >
+            <i className="fa-solid fa-circle-minus" style={{ fontSize: '0.72rem' }}></i>
+            Remove Stock
+          </button>
+        </div>
       </div>
 
       {/* ── Erreur ──────────────────────────────────────────────────── */}
@@ -765,6 +785,13 @@ const ShopHome: React.FC = () => {
             })
         }
       </div>
+
+      {showRemoveStock && (
+        <RemoveStockModal onClose={() => {
+          setShowRemoveStock(false);
+          fetchShopProducts({}).then(setAllProducts);
+        }} />
+      )}
 
       {/* CSS overrides */}
       <style>{`

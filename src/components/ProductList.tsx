@@ -193,6 +193,7 @@ const ProductList: React.FC = () => {
             Ajouter un produit
           </button>
         </div>
+
       </div>
 
       {/* ── Formulaire filtres ── */}

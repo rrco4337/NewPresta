@@ -24,6 +24,7 @@ import ImportAudit from './components/ImportAudit';
 import DashboardPage from './components/dashboardPage';
 import UserSelectPage from './components/UserSelectPage';
 import StockUpdate from './components/StockUpdate';
+import StockRemove from './components/StockUpdate';
 import StockEvolution from './components/StockEvolution';
 import FinancialAnalytics from './pages/FinancialAnalytics';
 import { StockByCategoryTable } from './components/StockCategory';

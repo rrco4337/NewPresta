@@ -26,6 +26,7 @@ const StockEvolution: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [reservedStock, setReservedStock] = useState<number>(0);
 
   const [allMovements, setAllMovements] = useState<StockMovement[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -60,7 +61,6 @@ const StockEvolution: React.FC = () => {
     }
   };
 
-  // ⚠️ FONCTION MODIFIÉE : maintenant asynchrone avec await
   const fetchStockEvolution = async () => {
     if (!selectedItem) {
       setError('Veuillez sélectionner un produit');
@@ -70,12 +70,13 @@ const StockEvolution: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      // Appel asynchrone vers l'API native PrestaShop
       const movements = await stockService.getMovements(selectedItem.productId, selectedItem.combinationId);
-      
-      // Transformer les mouvements en données journalières
       const dailyData = transformMovementsToDaily(movements);
       setDailyData(dailyData);
+      
+      // Récupérer le stock réservé pour ce produit/déclinaison
+      const reserved = await stockService.getReservedStock(selectedItem.productId, selectedItem.combinationId);
+      setReservedStock(reserved);
       
       console.log('Mouvements récupérés:', movements.length);
     } catch (err) {
@@ -89,18 +90,14 @@ const StockEvolution: React.FC = () => {
   const transformMovementsToDaily = (movements: any[]): DailyStock[] => {
     const dailyMap = new Map<string, DailyStock>();
     
-    // Trier les mouvements par date croissante pour calculer les stocks cumulés
     const sortedMovements = [...movements].sort((a, b) => 
       new Date(a.date).getTime() - new Date(b.date).getTime()
     );
     
-    // État initial (on prend la première quantité disponible)
     let currentStock = 0;
     
     for (const movement of sortedMovements) {
       const date = movement.date.split('T')[0];
-      
-      // Mettre à jour le stock cumulé
       currentStock += movement.quantityAdded;
       
       if (!dailyMap.has(date)) {
@@ -120,7 +117,6 @@ const StockEvolution: React.FC = () => {
       }
     }
     
-    // Trier par date décroissante (plus récent en premier)
     return Array.from(dailyMap.values()).sort((a, b) => 
       new Date(b.date).getTime() - new Date(a.date).getTime()
     );
@@ -134,6 +130,7 @@ const StockEvolution: React.FC = () => {
     setSelectedItem(null);
     setSearchTerm('');
     setDailyData([]);
+    setReservedStock(0);
     setError(null);
   };
 
@@ -163,8 +160,9 @@ const StockEvolution: React.FC = () => {
 
   const totalMovement = dailyData.reduce((sum, d) => sum + d.movement, 0);
   const avgMovement = dailyData.length ? (totalMovement / dailyData.length).toFixed(1) : '0';
-  const finalStock = dailyData[dailyData.length - 1]?.quantity || 0;
-  const initialStock = dailyData[0]?.quantity || 0;
+  const finalStock = dailyData.length > 0 ? dailyData[dailyData.length - 1]?.quantity || 0 : 0;
+  const initialStock = dailyData.length > 0 ? dailyData[0]?.quantity || 0 : 0;
+  const finalRealStock = finalStock - reservedStock;
 
   return (
     <div className="stock-evolution-page">
@@ -248,6 +246,16 @@ const StockEvolution: React.FC = () => {
               <span className="stat-number">{finalStock}</span>
             </div>
             <div className="stat-item">
+              <span className="stat-label">Stock réservé</span>
+              <span className="stat-number">{reservedStock}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Stock final disponible</span>
+              <span className={`stat-number ${finalRealStock < 0 ? 'negative' : finalRealStock > 0 ? 'positive' : 'neutral'}`}>
+                {finalRealStock}
+              </span>
+            </div>
+            {/* <div className="stat-item">
               <span className="stat-label">Variation</span>
               <span className={`stat-number ${getMovementClass(totalMovement)}`}>
                 {totalMovement > 0 ? '+' : ''}{totalMovement}
@@ -256,7 +264,7 @@ const StockEvolution: React.FC = () => {
             <div className="stat-item">
               <span className="stat-label">Moyenne/jour</span>
               <span className="stat-number">{avgMovement}</span>
-            </div>
+            </div> */}
           </div>
         )}
 

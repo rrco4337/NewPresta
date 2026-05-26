@@ -19,7 +19,7 @@
 .form-header h2 {
   font-size: 1.375rem;
   font-weight: 700;
-  color: #111827;
+  color: #1e293b;
 }
 
 .btn-back {
@@ -28,8 +28,8 @@
   gap: 6px;
   padding: 8px 16px;
   background: #fff;
-  color: #6b7280;
-  border: 1px solid #e5e7eb;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   cursor: pointer;
   font-size: 0.875rem;
@@ -38,9 +38,9 @@
 }
 
 .btn-back:hover {
-  background: #f9fafb;
-  color: #111827;
-  border-color: #d1d5db;
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #cbd5e1;
 }
 
 /* ================================================================
@@ -98,10 +98,10 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: #6b7280;
+  color: #64748b;
   padding-top: 8px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #f0f0f4;
+  border-bottom: 1px solid #e2e8f0;
   margin-top: 4px;
 }
 
@@ -121,18 +121,18 @@
 .form-group label {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #374151;
+  color: #1e293b;
 }
 
 .form-group input,
 .form-group textarea,
 .form-group select {
   padding: 9px 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e2e8f0;
   border-radius: 8px;
   font-size: 0.875rem;
-  color: #111827;
-  background: #fafafa;
+  color: #1e293b;
+  background: #f8fafc;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 
@@ -140,9 +140,9 @@
 .form-group textarea:focus,
 .form-group select:focus {
   outline: none;
-  border-color: #df0067;
+  border-color: #0891b2;
   background: #fff;
-  box-shadow: 0 0 0 3px rgba(223, 0, 103, 0.1);
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.1);
 }
 
 .form-group textarea {
@@ -159,7 +159,7 @@
   display: flex;
   gap: 10px;
   padding-top: 20px;
-  border-top: 1px solid #f0f0f4;
+  border-top: 1px solid #e2e8f0;
   margin-top: 8px;
 }
 
@@ -170,7 +170,7 @@
   justify-content: center;
   gap: 8px;
   padding: 11px 24px;
-  background: #df0067;
+  background: #0891b2;
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -178,13 +178,13 @@
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
-  box-shadow: 0 2px 8px rgba(223, 0, 103, 0.25);
+  box-shadow: 0 2px 8px rgba(8, 145, 178, 0.25);
   letter-spacing: 0.02em;
 }
 
 .btn-submit:hover:not(:disabled) {
-  background: #b8005a;
-  box-shadow: 0 4px 14px rgba(223, 0, 103, 0.35);
+  background: #0e7490;
+  box-shadow: 0 4px 14px rgba(8, 145, 178, 0.35);
   transform: translateY(-1px);
 }
 

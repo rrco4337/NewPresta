@@ -1,154 +1,406 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCart } from '../contexts/CartContext';
 import { useCustomer } from '../contexts/CustomerContext';
 
-interface ShopLayoutProps {
-  children: React.ReactNode;
-}
+interface ShopLayoutProps { children: React.ReactNode; }
 
 const ShopLayout: React.FC<ShopLayoutProps> = ({ children }) => {
   const { totalItems } = useCart();
   const { customer, logout } = useCustomer();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const handleLogout = async () => {
-    await logout();
-  };
+  const handleLogout = async () => { await logout(); };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="bg-slate-900 text-slate-100">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2 text-[11px] uppercase tracking-[0.25em]">
-          <span>Livraison offerte des 89€</span>
-          <span className="hidden sm:inline">Retours sous 30 jours</span>
-        </div>
+    <div style={{ minHeight: '100vh', background: '#f2f5fa', fontFamily: 'Inter, sans-serif' }}>
+
+      {/* ── Barre d'annonce ─────────────────────────────────────────── */}
+      <div style={{
+        background: 'linear-gradient(90deg, #4361ee 0%, #7c3aed 100%)',
+        color: '#fff', textAlign: 'center',
+        padding: '8px 16px', fontSize: '0.77rem',
+        fontWeight: 500, letterSpacing: '0.02em',
+      }}>
+        <i className="fa-solid fa-truck-fast" style={{ marginRight: '8px' }}></i>
+        Livraison offerte dès 89 € &nbsp;·&nbsp;
+        <i className="fa-solid fa-rotate-left" style={{ marginRight: '6px' }}></i>
+        Retours sous 30 jours &nbsp;·&nbsp;
+        <i className="fa-solid fa-headset" style={{ marginRight: '6px' }}></i>
+        Support 7j/7
       </div>
 
-      {/* ── Header ────────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto grid max-w-7xl items-center gap-4 px-6 py-4 lg:grid-cols-[auto,1fr,auto]">
-          <Link to="/shop" className="flex items-center gap-3 text-slate-900 transition hover:text-slate-700">
-            <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <svg className="h-5 w-5" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M2 4h28v8H2z" />
-                <path d="M4 12v12c0 2 1 4 3 4h18c2 0 3-2 3-4V12" />
-                <line x1="12" y1="12" x2="12" y2="28" />
-                <line x1="20" y1="12" x2="20" y2="28" />
-              </svg>
-            </span>
-            <span className="flex flex-col leading-none">
-              <span className="font-display text-xl tracking-tight">ShopPro</span>
-              <span className="text-[11px] text-slate-500">Boutique moderne</span>
-            </span>
-          </Link>
-
-          <div className="relative hidden w-full max-w-xl lg:block">
-            <svg className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <input
-              type="search"
-              placeholder="Rechercher un produit"
-              className="w-full rounded-full border border-slate-200 bg-slate-50 px-11 py-3 text-sm text-slate-900 placeholder:text-slate-400 shadow-sm focus:border-slate-900 focus:outline-none focus:ring-4 focus:ring-slate-900/10"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            {customer ? (
-              <>
-                <div className="hidden flex-col items-end gap-1 text-right sm:flex">
-                  <span className="text-[10px] uppercase tracking-[0.2em] text-slate-400">Bienvenue</span>
-                  <span className="font-display text-sm">{customer.firstname}</span>
-                </div>
-                <Link
-                  to="/shop/my-orders"
-                  className="hidden rounded-full border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-400 hover:text-slate-900 sm:inline-flex"
-                >
-                  Mes commandes
-                </Link>
-                <button
-                  className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
-                  onClick={handleLogout}
-                >
-                  Déconnexion
-                </button>
-              </>
-            ) : (
-              <Link
-                to="/shop/auth"
-                className="rounded-full bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800"
-              >
-                Connexion
-              </Link>
-            )}
-
-            <Link
-              to="/shop/cart"
-              className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-slate-400 hover:text-slate-900"
-              aria-label="Voir le panier"
-            >
-              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="9" cy="21" r="1" />
-                <circle cx="20" cy="21" r="1" />
-                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-              </svg>
-              {totalItems > 0 && (
-                <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-emerald-500 px-1 text-[10px] font-semibold text-white">
-                  {totalItems}
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <header style={{
+        position: 'sticky', top: 0, zIndex: 50,
+        background: 'rgba(255,255,255,0.95)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid #d0d7e1',
+        boxShadow: '0 2px 12px rgba(15,22,40,0.06)',
+      }}>
+        <div style={{
+          maxWidth: '1280px', margin: '0 auto',
+          padding: '0 24px',
+        }}>
+          {/* Ligne principale */}
+          <div style={{
+            display: 'flex', alignItems: 'center',
+            justifyContent: 'space-between', gap: '20px',
+            height: '68px',
+          }}>
+            {/* Logo */}
+            <Link to="/shop" style={{
+              display: 'flex', alignItems: 'center', gap: '12px',
+              textDecoration: 'none', flexShrink: 0,
+            }}>
+              <div style={{
+                width: '42px', height: '42px', borderRadius: '12px',
+                background: 'linear-gradient(135deg, #4361ee 0%, #7c3aed 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#fff', fontSize: '1rem',
+                boxShadow: '0 4px 12px rgba(67,97,238,0.3)',
+              }}>
+                <i className="fa-solid fa-bolt-lightning"></i>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
+                <span style={{
+                  fontFamily: 'Plus Jakarta Sans, sans-serif',
+                  fontSize: '1.05rem', fontWeight: 800,
+                  color: '#0f1620', letterSpacing: '-0.3px',
+                }}>ITU Project</span>
+                <span style={{ fontSize: '0.65rem', color: '#6b7a99', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                  Boutique
                 </span>
-              )}
+              </div>
             </Link>
+
+            {/* Search bar (desktop) */}
+            <div style={{
+              flex: 1, maxWidth: '500px', position: 'relative',
+              display: 'none',
+            }}
+              className="shop-search-wrap"
+            >
+              <i className="fa-solid fa-magnifying-glass" style={{
+                position: 'absolute', left: '14px', top: '50%',
+                transform: 'translateY(-50%)', color: '#a3b0c8', fontSize: '0.85rem',
+              }}></i>
+              <input
+                type="search" placeholder="Rechercher un produit…"
+                style={{
+                  width: '100%', padding: '10px 14px 10px 38px',
+                  border: '1.5px solid #d0d7e1', borderRadius: '999px',
+                  background: '#f1f4f9', fontSize: '0.85rem',
+                  color: '#0f1620', outline: 'none',
+                  transition: 'border-color 0.15s, box-shadow 0.15s, background 0.15s',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+                onFocus={e => { e.target.style.borderColor = '#4361ee'; e.target.style.background = '#fff'; e.target.style.boxShadow = '0 0 0 3px rgba(67,97,238,0.1)'; }}
+                onBlur={e => { e.target.style.borderColor = '#d0d7e1'; e.target.style.background = '#f1f4f9'; e.target.style.boxShadow = 'none'; }}
+              />
+            </div>
+
+            {/* Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              {customer ? (
+                <>
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-end',
+                    gap: '1px',
+                  }}
+                    className="shop-customer-info"
+                  >
+                    <span style={{ fontSize: '0.65rem', color: '#a3b0c8', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 600 }}>Bienvenue</span>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0f1620', fontFamily: 'Plus Jakarta Sans, sans-serif' }}>{customer.firstname}</span>
+                  </div>
+                  <Link to="/shop/my-orders" style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 16px', borderRadius: '999px',
+                    border: '1.5px solid #d0d7e1', background: '#f1f4f9',
+                    fontSize: '0.8rem', fontWeight: 600, color: '#4a5568',
+                    textDecoration: 'none',
+                    transition: 'border-color 0.15s, background 0.15s',
+                  }}
+                    className="shop-orders-btn"
+                  >
+                    <i className="fa-solid fa-receipt" style={{ fontSize: '0.8rem' }}></i>
+                    Mes commandes
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '8px 16px', borderRadius: '999px',
+                      border: 'none', background: '#f1f4f9',
+                      fontSize: '0.8rem', fontWeight: 600, color: '#6b7a99',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s, color 0.15s',
+                    }}
+                  >
+                    <i className="fa-solid fa-arrow-right-from-bracket"></i>
+                    <span className="shop-logout-text">Déconnexion</span>
+                  </button>
+                </>
+              ) : (
+                <Link to="/shop/auth" style={{
+                  display: 'flex', alignItems: 'center', gap: '7px',
+                  padding: '9px 20px', borderRadius: '999px',
+                  background: 'linear-gradient(135deg, #4361ee 0%, #7c3aed 100%)',
+                  color: '#fff', fontSize: '0.82rem', fontWeight: 700,
+                  textDecoration: 'none', letterSpacing: '0.01em',
+                  boxShadow: '0 3px 12px rgba(67,97,238,0.3)',
+                  transition: 'box-shadow 0.15s, transform 0.1s',
+                }}>
+                  <i className="fa-solid fa-right-to-bracket"></i>
+                  Connexion
+                </Link>
+              )}
+
+              {/* Cart */}
+              <Link to="/shop/cart" style={{
+                position: 'relative', width: '42px', height: '42px',
+                borderRadius: '12px', border: '1.5px solid #d0d7e1',
+                background: '#fff', color: '#4a5568',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                textDecoration: 'none', fontSize: '1rem',
+                transition: 'border-color 0.15s, background 0.15s, color 0.15s',
+                boxShadow: '0 1px 4px rgba(15,22,40,0.06)',
+              }}
+                aria-label="Panier"
+              >
+                <i className="fa-solid fa-cart-shopping"></i>
+                {totalItems > 0 && (
+                  <span style={{
+                    position: 'absolute', top: '-6px', right: '-6px',
+                    minWidth: '20px', height: '20px',
+                    background: 'linear-gradient(135deg, #4361ee, #7c3aed)',
+                    color: '#fff', fontSize: '0.65rem', fontWeight: 700,
+                    borderRadius: '999px', padding: '0 5px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '2px solid #fff',
+                    boxShadow: '0 2px 6px rgba(67,97,238,0.4)',
+                  }}>
+                    {totalItems}
+                  </span>
+                )}
+              </Link>
+
+              {/* Mobile menu toggle */}
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                style={{
+                  display: 'none', width: '42px', height: '42px',
+                  borderRadius: '10px', border: '1.5px solid #d0d7e1',
+                  background: '#f1f4f9', color: '#4a5568',
+                  alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', fontSize: '0.95rem',
+                }}
+                className="shop-mobile-toggle"
+                aria-label="Menu"
+              >
+                <i className={mobileMenuOpen ? 'fa-solid fa-xmark' : 'fa-solid fa-bars'}></i>
+              </button>
+            </div>
           </div>
+
+          {/* Nav secondaire (desktop) */}
+          <nav style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            borderTop: '1px solid #f1f4f9', padding: '0 0 10px',
+          }}
+            className="shop-nav-secondary"
+          >
+            {[
+              { label: 'Collection', icon: 'fa-solid fa-star', href: '#collection' },
+              { label: 'Essentiels',  icon: 'fa-solid fa-gem',  href: '#essentiels' },
+              { label: 'Nouveautés', icon: 'fa-solid fa-fire-flame-curved', href: '#essentiels' },
+              { label: 'Promos',     icon: 'fa-solid fa-tag',  href: '#promos' },
+            ].map(nav => (
+              <a key={nav.label} href={nav.href} style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '6px 14px', borderRadius: '999px',
+                fontSize: '0.8rem', fontWeight: 600, color: '#6b7a99',
+                textDecoration: 'none',
+                transition: 'background 0.15s, color 0.15s',
+              }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = '#ecedf5'; (e.currentTarget as HTMLElement).style.color = '#0f1620'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = '#6b7a99'; }}
+              >
+                <i className={nav.icon} style={{ fontSize: '0.75rem', color: '#4361ee' }}></i>
+                {nav.label}
+              </a>
+            ))}
+          </nav>
         </div>
 
-        <div className="hidden border-t border-slate-200 lg:block">
-          <div className="mx-auto flex max-w-7xl items-center gap-8 px-6 py-3 text-sm text-slate-600">
-            <a href="#collection" className="transition hover:text-slate-900">Collection</a>
-            <a href="#essentiels" className="transition hover:text-slate-900">Essentiels</a>
-            <a href="#promos" className="transition hover:text-slate-900">Promos</a>
+        {/* Mobile menu */}
+        {mobileMenuOpen && (
+          <div style={{
+            borderTop: '1px solid #ecedf5',
+            background: '#fff', padding: '16px 24px',
+            display: 'flex', flexDirection: 'column', gap: '8px',
+            animation: 'slide-up 0.18s ease',
+          }}>
+            {[
+              { label: 'Collection', href: '#collection' },
+              { label: 'Essentiels', href: '#essentiels' },
+              { label: 'Nouveautés', href: '#essentiels' },
+              { label: 'Promos', href: '#promos' },
+            ].map(nav => (
+              <a key={nav.label} href={nav.href}
+                style={{
+                  padding: '10px 14px', borderRadius: '10px',
+                  fontSize: '0.875rem', fontWeight: 600, color: '#4a5568',
+                  textDecoration: 'none', background: '#f1f4f9',
+                }}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {nav.label}
+              </a>
+            ))}
           </div>
-        </div>
+        )}
       </header>
 
-      {/* ── Main content ─────────────────────────────────────────────────────── */}
-      <main className="border-b border-slate-200">
-        <div className="mx-auto w-full max-w-7xl px-6 lg:px-8">{children}</div>
+      {/* ── Contenu principal ──────────────────────────────────────── */}
+      <main>
+        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '0 24px' }}>
+          {children}
+        </div>
       </main>
 
-      {/* ── Footer ────────────────────────────────────────────────────────────── */}
-      <footer className="bg-slate-900 text-slate-100">
-        <div className="mx-auto grid max-w-7xl gap-10 px-6 py-12 md:grid-cols-3 lg:px-8">
-          <div className="space-y-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">ShopPro</p>
-            <h3 className="font-display text-lg">Votre boutique du quotidien</h3>
-            <p className="text-sm leading-relaxed text-slate-300">
-              Une sélection premium, des essentiels modernes et une expérience d'achat fluide sur tous vos appareils.
+      {/* ── Footer ──────────────────────────────────────────────────── */}
+      <footer style={{
+        marginTop: '80px',
+        background: '#0f1620',
+        color: '#fff',
+      }}>
+        {/* CTA band */}
+        <div style={{
+          background: 'linear-gradient(135deg, #4361ee 0%, #7c3aed 100%)',
+          padding: '48px 24px', textAlign: 'center',
+        }}>
+          <div style={{ maxWidth: '520px', margin: '0 auto' }}>
+            <h3 style={{
+              fontFamily: 'Plus Jakarta Sans, sans-serif',
+              fontSize: 'clamp(1.4rem, 3vw, 1.9rem)', fontWeight: 800,
+              color: '#fff', marginBottom: '12px', letterSpacing: '-0.3px',
+            }}>
+              Prêt à découvrir notre catalogue ?
+            </h3>
+            <p style={{ fontSize: '0.9rem', color: 'rgba(255,255,255,0.75)', marginBottom: '24px' }}>
+              Des milliers de produits, sélectionnés avec soin pour vous.
             </p>
-          </div>
-          <div className="space-y-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Support</p>
-            <ul className="space-y-2 text-sm text-slate-300">
-              <li><a className="transition hover:text-white" href="#contact">Contact</a></li>
-              <li><a className="transition hover:text-white" href="#faq">FAQ</a></li>
-              <li><a className="transition hover:text-white" href="#shipping">Livraison</a></li>
-            </ul>
-          </div>
-          <div className="space-y-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-slate-400">Légal</p>
-            <ul className="space-y-2 text-sm text-slate-300">
-              <li><a className="transition hover:text-white" href="#terms">CGU</a></li>
-              <li><a className="transition hover:text-white" href="#privacy">Confidentialité</a></li>
-              <li><a className="transition hover:text-white" href="#cookies">Cookies</a></li>
-            </ul>
+            <a href="#collection" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '12px 28px', borderRadius: '999px',
+              background: '#fff', color: '#4361ee',
+              fontSize: '0.875rem', fontWeight: 700, textDecoration: 'none',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
+            }}>
+              <i className="fa-solid fa-arrow-right"></i>
+              Explorer le catalogue
+            </a>
           </div>
         </div>
-        <div className="border-t border-slate-800">
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 text-xs text-slate-400 lg:px-8">
-            <span>&copy; 2026 ShopPro. Tous droits réservés.</span>
-            <span>Livraison internationale</span>
+
+        {/* Links */}
+        <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '48px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '40px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+                <div style={{
+                  width: '34px', height: '34px', borderRadius: '9px',
+                  background: 'linear-gradient(135deg, #4361ee, #7c3aed)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontSize: '0.85rem',
+                }}>
+                  <i className="fa-solid fa-bolt-lightning"></i>
+                </div>
+                <span style={{ fontFamily: 'Plus Jakarta Sans, sans-serif', fontWeight: 800, fontSize: '0.95rem' }}>ITU Project</span>
+              </div>
+              <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.5)', lineHeight: 1.6 }}>
+                Votre boutique de référence pour des produits de qualité au meilleur prix.
+              </p>
+              {/* Social */}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                {['fa-brands fa-instagram', 'fa-brands fa-x-twitter', 'fa-brands fa-facebook'].map(ic => (
+                  <div key={ic} style={{
+                    width: '32px', height: '32px', borderRadius: '8px',
+                    background: 'rgba(255,255,255,0.08)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', cursor: 'pointer',
+                  }}>
+                    <i className={ic}></i>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {[
+              { title: 'Boutique', links: ['Collection', 'Nouveautés', 'Promos', 'Essentiels'] },
+              { title: 'Support',  links: ['Contact', 'FAQ', 'Livraison', 'Retours'] },
+              { title: 'Légal',    links: ['CGU', 'Confidentialité', 'Cookies', 'Mentions légales'] },
+            ].map(col => (
+              <div key={col.title}>
+                <p style={{
+                  fontSize: '0.68rem', fontWeight: 700, textTransform: 'uppercase',
+                  letterSpacing: '0.1em', color: 'rgba(255,255,255,0.35)',
+                  marginBottom: '14px',
+                }}>{col.title}</p>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {col.links.map(l => (
+                    <li key={l}>
+                      <a href="#" style={{
+                        fontSize: '0.83rem', color: 'rgba(255,255,255,0.55)',
+                        textDecoration: 'none', transition: 'color 0.15s',
+                      }}
+                        onMouseEnter={e => (e.currentTarget.style.color = '#fff')}
+                        onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.55)')}
+                      >{l}</a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+
+          {/* Bottom bar */}
+          <div style={{
+            marginTop: '40px', paddingTop: '24px',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            flexWrap: 'wrap', gap: '12px',
+            fontSize: '0.78rem', color: 'rgba(255,255,255,0.3)',
+          }}>
+            <span>© 2026 ITU Project. Tous droits réservés.</span>
+            <div style={{ display: 'flex', gap: '16px' }}>
+              {['fa-brands fa-cc-visa', 'fa-brands fa-cc-mastercard', 'fa-brands fa-cc-paypal'].map(ic => (
+                <i key={ic} className={ic} style={{ fontSize: '1.4rem', color: 'rgba(255,255,255,0.25)' }}></i>
+              ))}
+            </div>
           </div>
         </div>
       </footer>
+
+      {/* Responsive CSS */}
+      <style>{`
+        @media (min-width: 768px) {
+          .shop-search-wrap { display: block !important; }
+          .shop-customer-info { display: flex !important; }
+          .shop-orders-btn { display: flex !important; }
+          .shop-logout-text { display: inline !important; }
+          .shop-nav-secondary { display: flex !important; }
+        }
+        @media (max-width: 767px) {
+          .shop-search-wrap { display: none !important; }
+          .shop-customer-info { display: none !important; }
+          .shop-orders-btn { display: none !important; }
+          .shop-logout-text { display: none; }
+          .shop-nav-secondary { display: none !important; }
+          .shop-mobile-toggle { display: flex !important; }
+        }
+      `}</style>
     </div>
   );
 };

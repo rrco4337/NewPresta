@@ -39,6 +39,7 @@ interface DropzoneProps {
   onChange: (f: File) => void;
 }
 
+
 const Dropzone: React.FC<DropzoneProps> = ({ accept, label, sublabel, file, disabled, onChange }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
@@ -167,10 +168,15 @@ const FichiersImport: React.FC = () => {
   const [zImg, setZImg] = useState<ZoneState>(INITIAL_ZONE);
   const [formPhase, setFormPhase] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [formError, setFormError] = useState('');
+  const [NoImport, setNoImport] = useState(true);
 
-  const allIdle = [z1, z2, z3, zImg].every((z) => z.phase === 'idle');
-  const hasAllFiles = Boolean(z1.file && z2.file && z3.file && zImg.file);
+  const allIdle = [z1, z2, z3, ...(NoImport ? [] : [zImg])].every((z) => z.phase === 'idle');
+  const hasAllFiles = Boolean(z1.file && z2.file && z3.file && (NoImport || zImg.file));
   const inputsLocked = formPhase === 'running' || !allIdle;
+
+  const HandleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNoImport(e.target.checked);
+  };
 
   // ── Helpers run ───────────────────────────────────────────────────────────────
 
@@ -251,11 +257,12 @@ const FichiersImport: React.FC = () => {
   };
 
   const runPrevalidation = async (): Promise<boolean> => {
-    if (!z1.file || !z2.file || !z3.file || !zImg.file) return false;
+    if (!z1.file || !z2.file || !z3.file || !zImg.file ) return false;
 
     setZ1((p) => ({ ...p, phase: 'running', progress: 0, progressLabel: 'Pré-validation…', results: [] }));
     setZ2((p) => ({ ...p, phase: 'running', progress: 0, progressLabel: 'Pré-validation…', results: [] }));
     setZ3((p) => ({ ...p, phase: 'running', progress: 0, progressLabel: 'Pré-validation…', results: [] }));
+  
     setZImg((p) => ({ ...p, phase: 'running', progress: 0, progressLabel: 'Pré-validation…', results: [] }));
 
     const validation = await prevalidateFichiersImport(
@@ -319,7 +326,9 @@ const FichiersImport: React.FC = () => {
     setFormError('');
 
     if (!hasAllFiles) {
-      setFormError('Veuillez sélectionner les 4 fichiers avant de lancer l\'import.');
+      setFormError(NoImport
+        ? 'Veuillez sélectionner les 3 fichiers CSV avant de lancer l\'import.'
+        : 'Veuillez sélectionner les 3 fichiers CSV et l\'archive ZIP d\'images avant de lancer l\'import.');
       return;
     }
 
@@ -340,9 +349,17 @@ const FichiersImport: React.FC = () => {
 
     const ok3 = await runFichier3();
     if (!ok3) { setFormPhase('error'); return; }
+    
+   
 
-    const okImg = await runImages();
+    if(!NoImport){
+       const okImg = await runImages();
     if (!okImg) { setFormPhase('error'); return; }
+   
+
+    }
+ 
+  
 
     setFormPhase('done');
   };
@@ -480,6 +497,13 @@ const FichiersImport: React.FC = () => {
             onChange={(f) => setZImg((p) => ({ ...p, file: f }))}
           />
         )}
+        <div>
+        <p>Ne pas importer les images (cocher le checkbox): </p> <input type="checkbox" checked={NoImport}
+        onChange={HandleImport} 
+             
+      /><span >importer: { NoImport ? 'Non' : 'Oui' }</span>
+        </div>
+      
         </section>
 
         {formError && <div className="fz-error-msg">{formError}</div>}

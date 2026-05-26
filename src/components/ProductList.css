@@ -13,7 +13,7 @@
 .products-header h1 {
   font-size: 1.375rem;
   font-weight: 700;
-  color: #111827;
+  color: #1e293b;
 }
 
 .header-actions {
@@ -40,14 +40,14 @@
 }
 
 .add-button {
-  background: #df0067;
+  background: #0891b2;
   color: #fff;
-  box-shadow: 0 2px 8px rgba(223, 0, 103, 0.25);
+  box-shadow: 0 2px 8px rgba(8, 145, 178, 0.25);
 }
 
 .add-button:hover {
-  background: #b8005a;
-  box-shadow: 0 4px 14px rgba(223, 0, 103, 0.35);
+  background: #0e7490;
+  box-shadow: 0 4px 14px rgba(8, 145, 178, 0.35);
   transform: translateY(-1px);
 }
 
@@ -58,9 +58,9 @@
 }
 
 .refresh-button:hover {
-  background: #f9fafb;
-  color: #111827;
-  border-color: #d1d5db;
+  background: #f1f5f9;
+  color: #1e293b;
+  border-color: #cbd5e1;
 }
 
 /* ================================================================
@@ -168,8 +168,8 @@
 
 .search-input:focus {
   outline: none;
-  border-color: #df0067;
-  box-shadow: 0 0 0 3px rgba(223, 0, 103, 0.1);
+  border-color: #0891b2;
+  box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.1);
 }
 
 .search-icon {
@@ -197,7 +197,7 @@
 }
 
 .filters-toggle:hover {
-  background: #f9fafb;
+  background: #f8fafc;
   color: #111827;
   border-color: #d1d5db;
 }

@@ -1,7 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCustomer } from '../contexts/CustomerContext';
-import { getCustomerOrders, type PSCustomerOrder } from '../services/customerService';
+import {
+  getCustomerOrders,
+  getOrderFullDetail,
+  checkStockForRows,
+  createPSCart,
+  createPSOrder,
+  type PSCustomerOrder,
+  type OrderDetailRow,
+  type StockCheckResult,
+} from '../services/customerService';
+import { updatePSOrderStatus } from '../services/orderService';
 import { formatPrice } from '../services/shopService';
 import './MyOrders.css';
 
@@ -35,6 +45,14 @@ const MyOrders: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
 
+  // État du panneau de duplication
+  const [dupTarget, setDupTarget]             = useState<PSCustomerOrder | null>(null);
+  const [dupTimes, setDupTimes]               = useState<number>(1);
+  const [dupStep, setDupStep]                 = useState<'idle' | 'checking' | 'results' | 'creating' | 'done' | 'error'>('idle');
+  const [dupStockResults, setDupStockResults] = useState<StockCheckResult[]>([]);
+  const [dupOrderDetail, setDupOrderDetail]   = useState<{ rows: OrderDetailRow[]; addressId: string; carrierId: string } | null>(null);
+  const [dupError, setDupError]               = useState<string>('');
+
   useEffect(() => {
     if (!customer) {
       navigate('/shop/auth?next=/shop/my-orders', { replace: true });
@@ -46,6 +64,82 @@ const MyOrders: React.FC = () => {
       .finally(() => setLoading(false));
   }, [customer, navigate]);
 
+  function handleOpenDuplicate(order: PSCustomerOrder) {
+    setDupTarget(order);
+    setDupTimes(1);
+    setDupStep('idle');
+    setDupStockResults([]);
+    setDupOrderDetail(null);
+    setDupError('');
+  }
+
+  function handleCancelDuplicate() {
+    setDupTarget(null);
+    setDupStep('idle');
+  }
+
+  async function handleCheckStock() {
+    if (!dupTarget || dupTimes < 1) return;
+    setDupStep('checking');
+    setDupError('');
+
+    const detail = await getOrderFullDetail(dupTarget.id);
+    if (!detail || detail.rows.length === 0) {
+      setDupError('Impossible de récupérer les détails de la commande. Réessayez plus tard.');
+      setDupStep('error');
+      return;
+    }
+
+    const stockResults = await checkStockForRows(detail.rows, dupTimes);
+    setDupOrderDetail(detail);
+    setDupStockResults(stockResults);
+    setDupStep('results');
+  }
+
+  async function handleValidateDuplication() {
+    if (!dupTarget || !dupOrderDetail || !customer) return;
+    setDupStep('creating');
+    setDupError('');
+
+    try {
+      const items = dupOrderDetail.rows.map(row => ({
+        id:          row.productId,
+        name:        row.productName,
+        priceHt:     row.unitPriceTaxExcl,
+        priceTtc:    row.unitPriceTaxIncl,
+        taxRate:     0,
+        qty:         row.quantity * dupTimes,
+        attributeId: row.combinationId !== '0' ? row.combinationId : undefined,
+      }));
+
+      const cartId = await createPSCart(
+        customer.id,
+        dupOrderDetail.addressId,
+        dupOrderDetail.carrierId,
+        items
+      );
+
+      const orderId = await createPSOrder({
+        customerId:   customer.id,
+        addressId:    dupOrderDetail.addressId,
+        cartId,
+        carrierId:    dupOrderDetail.carrierId,
+        items,
+        shippingCost: 0,
+      });
+
+      // Passer en "Livré" (état 5) → déclenche la déduction automatique du stock
+      await updatePSOrderStatus(orderId, 5);
+
+      setDupStep('done');
+      // Recharger la liste des commandes
+      getCustomerOrders(customer.id).then(setOrders).catch(() => {});
+    } catch {
+      setDupError('Une erreur est survenue lors de la création de la commande. Réessayez plus tard.');
+      setDupStep('error');
+    }
+  }
+
   return (
     <div className="myorders-page">
       <nav className="myorders-breadcrumb">
@@ -56,11 +150,16 @@ const MyOrders: React.FC = () => {
 
       <div className="myorders-header">
         <h1 className="myorders-title">Mes commandes</h1>
-        {customer && (
-          <span className="myorders-customer">
-            {customer.firstname} {customer.lastname}
-          </span>
-        )}
+        <div className="myorders-header-right">
+          {customer && (
+            <span className="myorders-customer">
+              {customer.firstname} {customer.lastname}
+            </span>
+          )}
+          <Link to="/shop" className="myorders-new-btn">
+            + Créer une nouvelle commande
+          </Link>
+        </div>
       </div>
 
       {loading && (
@@ -96,6 +195,7 @@ const MyOrders: React.FC = () => {
                 <th>Statut</th>
                 <th>Total</th>
                 <th>Paiement</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -112,12 +212,142 @@ const MyOrders: React.FC = () => {
                   </td>
                   <td><strong>{formatPrice(order.totalPaid)}</strong></td>
                   <td>À la livraison</td>
+                  <td>
+                    <button
+                      className="order-dup-btn"
+                      onClick={() => handleOpenDuplicate(order)}
+                    >
+                      Dupliquer
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      {/* ── Panneau de duplication ── */}
+      {dupTarget && (
+        <div className="dup-panel">
+          <div className="dup-panel-header">
+            <h2 className="dup-panel-title">
+              Dupliquer la commande{' '}
+              <span className="order-ref">{dupTarget.reference}</span>
+            </h2>
+            <button className="dup-close-btn" onClick={handleCancelDuplicate}>✕ Fermer</button>
+          </div>
+
+          {/* ÉTAPE 1 — Choisir le nombre de duplications */}
+          {(dupStep === 'idle' || dupStep === 'checking') && (
+            <div className="dup-step">
+              <p className="dup-step-label">
+                Combien de fois voulez-vous dupliquer cette commande ?
+              </p>
+              <div className="dup-input-row">
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={dupTimes}
+                  onChange={e => setDupTimes(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="dup-number-input"
+                />
+                <span className="dup-times-label">fois</span>
+                <button
+                  className="dup-check-btn"
+                  onClick={handleCheckStock}
+                  disabled={dupStep === 'checking'}
+                >
+                  {dupStep === 'checking' ? 'Vérification en cours…' : 'Vérifier le stock'}
+                </button>
+              </div>
+              <p className="dup-hint">
+                Les quantités de chaque produit seront multipliées par {dupTimes}.
+              </p>
+            </div>
+          )}
+
+          {/* ÉTAPE 2 — Résultats de la vérification du stock */}
+          {dupStep === 'results' && dupStockResults.length > 0 && (
+            <div className="dup-step">
+              <h3 className="dup-results-title">Résultat de la vérification du stock</h3>
+              <table className="dup-stock-table">
+                <thead>
+                  <tr>
+                    <th>Produit</th>
+                    <th>Quantité nécessaire</th>
+                    <th>Stock disponible</th>
+                    <th>Résultat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dupStockResults.map((r, i) => (
+                    <tr key={i}>
+                      <td>{r.productName}</td>
+                      <td>{r.needed}</td>
+                      <td>{r.available}</td>
+                      <td>
+                        {r.ok
+                          ? <span className="dup-badge-ok">✔ Suffisant</span>
+                          : <span className="dup-badge-nok">✘ Insuffisant</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="dup-results-actions">
+                <button className="dup-back-btn" onClick={() => setDupStep('idle')}>
+                  ← Modifier le nombre
+                </button>
+                {dupStockResults.every(r => r.ok) ? (
+                  <button className="dup-validate-btn" onClick={handleValidateDuplication}>
+                    Valider la duplication
+                  </button>
+                ) : (
+                  <p className="dup-warning">
+                    ⚠ Stock insuffisant pour un ou plusieurs produits. Impossible de valider.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ÉTAPE 3 — Création en cours */}
+          {dupStep === 'creating' && (
+            <div className="dup-step dup-step--center">
+              <div className="myorders-spinner" />
+              <p>Création de la commande en cours…</p>
+            </div>
+          )}
+
+          {/* ÉTAPE 4 — Succès */}
+          {dupStep === 'done' && (
+            <div className="dup-step dup-step--center">
+              <p className="dup-success">
+                ✔ Commande créée avec succès.<br />
+                Elle est automatiquement marquée comme <strong>payée</strong> et <strong>livrée</strong>.
+              </p>
+              <button className="dup-close-btn-lg" onClick={handleCancelDuplicate}>
+                Fermer
+              </button>
+            </div>
+          )}
+
+          {/* ERREUR */}
+          {dupStep === 'error' && (
+            <div className="dup-step">
+              <p className="dup-error">{dupError}</p>
+              <button className="dup-back-btn" onClick={() => setDupStep('idle')}>
+                Réessayer
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 };

@@ -1,282 +1,257 @@
 /* ================================================================
-   VARIABLES & RESET
+   ITU PROJECT — AppLayout
+   Palette: #f2f5fa · #ffffff · #d0d7e1 · #f1f4f9 · #ecedf5
+   Accent: #4361ee
    ================================================================ */
-:root {
-  --sidebar-w: 240px;
-  --sidebar-w-collapsed: 64px;
-  --topbar-h: 56px;
 
-  --accent: #df0067;
-  --accent-light: #fff0f6;
-  --accent-mid: #ffd6e8;
-
-  --sidebar-bg: #ffffff;
-  --sidebar-border: #f0f0f4;
-  --sidebar-text: #6b7280;
-  --sidebar-text-hover: #111827;
-  --sidebar-active-bg: var(--accent-light);
-  --sidebar-active-text: var(--accent);
-
-  --topbar-bg: #ffffff;
-  --topbar-border: #f0f0f4;
-
-  --page-bg: #f7f8fc;
-  --card-bg: #ffffff;
-
-  --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --text-muted: #9ca3af;
-
-  --radius: 8px;
-  --transition: 0.2s ease;
-}
-
-/* ================================================================
-   LAYOUT GLOBAL
-   ================================================================ */
-.layout {
+/* ── Layout global ──────────────────────────────────────────────── */
+.itu-layout {
   display: flex;
   min-height: 100vh;
-  background: var(--page-bg);
+  background: var(--itu-50);
 }
 
-/* ================================================================
-   SIDEBAR
-   ================================================================ */
-.sidebar {
+/* ── SIDEBAR ────────────────────────────────────────────────────── */
+.itu-sidebar {
   width: var(--sidebar-w);
   min-height: 100vh;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--sidebar-border);
+  background: var(--white);
+  border-right: 1px solid var(--itu-300);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width var(--transition);
-  overflow: hidden;
-  position: sticky;
+  position: fixed;
   top: 0;
-  height: 100vh;
+  left: 0;
+  bottom: 0;
   z-index: 100;
+  transition: width var(--transition-base);
+  overflow: hidden;
 }
 
-.layout--collapsed .sidebar {
-  width: var(--sidebar-w-collapsed);
-}
+.itu-layout--collapsed .itu-sidebar { width: var(--sidebar-w-collapsed); }
 
 /* Brand */
-.sidebar-brand {
+.itu-sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 16px;
-  height: var(--topbar-h);
-  border-bottom: 1px solid var(--sidebar-border);
+  gap: 12px;
+  padding: 20px 18px;
+  border-bottom: 1px solid var(--itu-100);
   flex-shrink: 0;
+}
+
+.itu-brand-logo {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--itu-500) 0%, #7c3aed 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1rem;
+  box-shadow: 0 4px 12px rgba(67, 97, 238, 0.35);
+}
+
+.itu-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   overflow: hidden;
 }
 
-.sidebar-logo {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 800;
-  border-radius: 8px;
-  flex-shrink: 0;
-  letter-spacing: 0.5px;
+.itu-brand-name {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+  white-space: nowrap;
+  letter-spacing: -0.2px;
 }
 
-.sidebar-brand-name {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text-primary);
+.itu-brand-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--itu-500);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   white-space: nowrap;
-  letter-spacing: -0.3px;
 }
 
 /* Nav */
-.sidebar-nav {
+.itu-sidebar-nav {
   flex: 1;
-  padding: 12px 0;
   overflow-y: auto;
   overflow-x: hidden;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.nav-section {
-  margin-bottom: 4px;
+.itu-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 6px;
 }
 
-.nav-section-label {
-  display: block;
-  padding: 10px 20px 4px;
-  font-size: 0.68rem;
+.itu-nav-section-label {
+  font-size: 0.62rem;
   font-weight: 700;
+  color: var(--color-gray-400);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  padding: 10px 10px 4px;
   white-space: nowrap;
 }
 
-.nav-item {
+/* Nav item base */
+.itu-nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 16px;
-  margin: 1px 8px;
-  border-radius: var(--radius);
-  color: var(--sidebar-text);
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-600);
   text-decoration: none;
-  font-size: 0.875rem;
-  font-weight: 500;
   cursor: pointer;
-  transition: background var(--transition), color var(--transition);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
   overflow: hidden;
 }
 
-.nav-item:not(.nav-item--disabled):hover {
-  background: #f3f4f6;
-  color: var(--sidebar-text-hover);
+.itu-nav-item:hover {
+  background: var(--itu-100);
+  color: var(--color-gray-900);
 }
 
-.nav-item--active {
-  background: var(--sidebar-active-bg) !important;
-  color: var(--sidebar-active-text) !important;
-  font-weight: 600;
+.itu-nav-item--active {
+  background: var(--color-primary-50) !important;
+  color: var(--itu-500) !important;
+  font-weight: var(--font-weight-semibold);
 }
 
-.nav-item--active .nav-item-icon {
-  color: var(--accent);
+.itu-nav-item--active .itu-nav-icon {
+  color: var(--itu-500);
 }
 
-.nav-item--disabled {
+.itu-nav-item--disabled {
   opacity: 0.45;
-  cursor: default;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
-.nav-item-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.itu-nav-item--danger { color: #e53e3e; }
+.itu-nav-item--danger:hover { background: #fff5f5; color: #c53030; }
+
+.itu-nav-icon {
+  width: 17px;
+  text-align: center;
+  font-size: 0.88rem;
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  color: var(--color-gray-400);
+  transition: color var(--transition-fast);
 }
+.itu-nav-item:hover .itu-nav-icon { color: var(--color-gray-700); }
 
-.nav-item-label {
-  flex: 1;
-}
+.itu-nav-label { flex: 1; }
 
-.nav-badge-soon {
-  font-size: 0.6rem;
+.itu-nav-soon {
+  font-size: 0.58rem;
   font-weight: 700;
+  background: var(--itu-200);
+  color: var(--itu-500);
+  border-radius: 999px;
+  padding: 2px 7px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: #f3f4f6;
-  color: #9ca3af;
-  padding: 2px 6px;
-  border-radius: 99px;
+}
+
+/* Chevron */
+.itu-chevron {
+  font-size: 0.65rem;
+  color: var(--color-gray-400);
+  transition: transform var(--transition-base);
   flex-shrink: 0;
 }
+.itu-chevron--open { transform: rotate(90deg); }
 
-/* ── Sous-menu (nav-group / nav-submenu) ─────────────────────────────────── */
-.nav-group {
+/* Submenu */
+.itu-nav-submenu {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 4px 28px;
+  animation: slide-up 0.18s ease;
 }
 
-.nav-item--parent {
-  justify-content: flex-start;
-  width: calc(100% - 16px);
-  background: none;
-  border: none;
-  text-align: left;
-  font-family: inherit;
-  cursor: pointer;
-}
-
-.nav-submenu {
-  display: flex;
-  flex-direction: column;
-  margin: 2px 8px 4px 16px;
-  border-left: 2px solid #e5e7eb;
-  padding-left: 4px;
-  animation: submenuIn 0.18s ease;
-}
-
-@keyframes submenuIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-.nav-subitem {
+.itu-nav-subitem {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 7px 10px;
-  margin: 1px 0;
-  border-radius: 6px;
-  color: #6b7280;
+  border-radius: var(--radius-sm);
+  font-size: 0.79rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-500);
   text-decoration: none;
-  font-size: 0.825rem;
-  font-weight: 500;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
 }
-
-.nav-subitem:hover {
-  background: #f3f4f6;
-  color: #111827;
+.itu-nav-subitem:hover {
+  background: var(--itu-100);
+  color: var(--color-gray-900);
+}
+.itu-nav-subitem--active {
+  color: var(--itu-500);
+  font-weight: var(--font-weight-semibold);
 }
 
-.nav-subitem--active {
-  background: #fdf2f7;
-  color: #df0067;
-  font-weight: 600;
-}
-
-.nav-subitem-dot {
+.itu-subitem-dot {
   width: 5px;
   height: 5px;
+  min-width: 5px;
   border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-  opacity: 0.6;
+  background: var(--itu-300);
+  transition: background var(--transition-fast);
 }
-
-.nav-subitem--active .nav-subitem-dot {
-  opacity: 1;
-}
+.itu-nav-subitem--active .itu-subitem-dot { background: var(--itu-500); }
 
 /* Footer */
-.sidebar-footer {
-  border-top: 1px solid var(--sidebar-border);
-  padding: 12px 8px;
+.itu-sidebar-footer {
+  border-top: 1px solid var(--itu-100);
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.sidebar-user {
+.itu-sidebar-user {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px;
-  border-radius: var(--radius);
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
-.sidebar-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--accent-light);
-  color: var(--accent);
+.itu-user-avatar {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--itu-500) 0%, #7c3aed 100%);
+  color: #fff;
   font-size: 0.8rem;
   font-weight: 700;
   display: flex;
@@ -285,147 +260,198 @@
   flex-shrink: 0;
 }
 
-.sidebar-user-info {
+.itu-user-info {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: 2px;
+  overflow: hidden;
 }
 
-.sidebar-user-email {
-  font-size: 0.8rem;
+.itu-user-email {
+  font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--color-gray-700);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 160px;
 }
 
-.sidebar-user-role {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-}
-
-.sidebar-logout-btn {
+.itu-user-role {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
+  gap: 5px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.itu-role-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse-dot 2.5s ease-in-out infinite;
+}
+
+.itu-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-500);
   background: none;
   border: none;
-  border-radius: var(--radius);
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-  font-weight: 500;
   cursor: pointer;
   width: 100%;
-  transition: background var(--transition), color var(--transition);
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
 }
-
-.sidebar-logout-btn:hover {
-  background: #fef2f2;
-  color: #dc2626;
+.itu-logout-btn:hover {
+  background: #fff5f5;
+  color: #e53e3e;
 }
+.itu-logout-btn i { width: 17px; text-align: center; font-size: 0.85rem; }
 
-/* ================================================================
-   LAYOUT BODY (topbar + content)
-   ================================================================ */
-.layout-body {
-  flex: 1;
+/* ── MAIN BODY ──────────────────────────────────────────────────── */
+.itu-layout-body {
+  margin-left: var(--sidebar-w);
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-height: 100vh;
+  flex: 1;
+  transition: margin-left var(--transition-base);
 }
+.itu-layout--collapsed .itu-layout-body { margin-left: var(--sidebar-w-collapsed); }
 
-/* ================================================================
-   TOPBAR
-   ================================================================ */
-.topbar {
-  height: var(--topbar-h);
-  background: var(--topbar-bg);
-  border-bottom: 1px solid var(--topbar-border);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 24px;
+/* ── TOPBAR ─────────────────────────────────────────────────────── */
+.itu-topbar {
   position: sticky;
   top: 0;
-  z-index: 50;
-  flex-shrink: 0;
+  z-index: 90;
+  height: var(--topbar-h);
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--itu-300);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  gap: 16px;
 }
 
-.topbar-toggle {
+.itu-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.itu-topbar-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--itu-100);
+  border: 1px solid var(--itu-300);
+  color: var(--color-gray-600);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
-  background: none;
-  border: none;
-  border-radius: var(--radius);
-  color: var(--text-secondary);
   cursor: pointer;
-  transition: background var(--transition);
+  font-size: 0.85rem;
+  transition: background var(--transition-fast), color var(--transition-fast);
   flex-shrink: 0;
 }
-
-.topbar-toggle:hover {
-  background: #f3f4f6;
-  color: var(--text-primary);
+.itu-topbar-toggle:hover {
+  background: var(--itu-200);
+  color: var(--color-gray-900);
 }
 
-.topbar-title {
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--text-primary);
+.itu-topbar-title-wrap { display: flex; align-items: center; }
+.itu-topbar-title {
   margin: 0;
-  flex: 1;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+  letter-spacing: -0.2px;
 }
 
-.topbar-right {
+.itu-topbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-left: auto;
+  gap: 8px;
 }
 
-.topbar-avatar {
-  width: 34px;
-  height: 34px;
+.itu-topbar-icon-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: none;
+  border: 1px solid var(--itu-300);
+  color: var(--color-gray-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.itu-topbar-icon-btn:hover {
+  background: var(--itu-100);
+  color: var(--color-gray-900);
+  border-color: var(--itu-400);
+}
+
+.itu-notif-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: var(--accent-light);
-  color: var(--accent);
+  background: var(--itu-500);
+  border: 1.5px solid #fff;
+}
+
+.itu-topbar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--itu-500) 0%, #7c3aed 100%);
+  color: #fff;
   font-size: 0.8rem;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: default;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(67,97,238,0.3);
 }
 
-/* ================================================================
-   MAIN CONTENT AREA
-   ================================================================ */
-.layout-content {
+/* ── PAGE CONTENT ───────────────────────────────────────────────── */
+.itu-layout-content {
   flex: 1;
-  padding: 28px 32px;
+  padding: 28px 28px 48px;
+  animation: slide-up 0.22s ease;
 }
 
-/* ================================================================
-   RESPONSIVE
-   ================================================================ */
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    height: 100vh;
-    z-index: 200;
-    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.1);
-    width: var(--sidebar-w-collapsed);
-  }
-
-  .layout-content {
-    padding: 20px 16px;
-  }
-}
+/* ── Collapsed helpers ──────────────────────────────────────────── */
+.itu-layout--collapsed .itu-nav-section-label { opacity: 0; height: 0; padding: 0; margin: 0; overflow: hidden; }
+.itu-layout--collapsed .itu-nav-label         { display: none; }
+.itu-layout--collapsed .itu-nav-soon          { display: none; }
+.itu-layout--collapsed .itu-nav-submenu       { display: none; }
+.itu-layout--collapsed .itu-chevron           { display: none; }
+.itu-layout--collapsed .itu-brand-text        { display: none; }
+.itu-layout--collapsed .itu-user-info         { display: none; }
+.itu-layout--collapsed .itu-logout-btn span   { display: none; }
+.itu-layout--collapsed .itu-sidebar-footer    { align-items: center; }
+.itu-layout--collapsed .itu-nav-item          { justify-content: center; padding: 10px; }
+.itu-layout--collapsed .itu-logout-btn        { justify-content: center; padding: 10px; }
+.itu-layout--collapsed .itu-nav-icon          { width: auto; }

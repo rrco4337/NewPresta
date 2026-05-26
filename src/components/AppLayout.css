@@ -1,429 +1,457 @@
 /* ================================================================
-   VARIABLES & RESET (Drastic Shift: Cyber-Clean / Neo-Brutalist)
+   ITU PROJECT — AppLayout
+   Palette: #f2f5fa · #ffffff · #d0d7e1 · #f1f4f9 · #ecedf5
+   Accent: #4361ee
    ================================================================ */
-:root {
-  --sidebar-w: 260px;
-  --sidebar-w-collapsed: 72px;
-  --topbar-h: 64px;
 
-  /* Palette Haute Énergie & Contraste Élevé */
-  --accent: #a7f152;          /* Orange Brut / Électrique */
-  --accent-light: #fff0e6;    /* Teinte de fond subtile */
-  --accent-mid: #ffd1b3;
-
-  --sidebar-bg: #000000;      /* Passage au Dark Mode structurel */
-  --sidebar-border: #1e222b;
-  --sidebar-text: #8a99ad;
-  --sidebar-text-hover: #ffffff;
-  --sidebar-active-bg: #1e222b;
-  --sidebar-active-text: var(--accent);
-
-  --topbar-bg: #ffffff;       /* Contraste saisissant entre haut et côté */
-  --topbar-border: #0d0f12;   /* Bordure épaisse type Brutaliste */
-
-  --page-bg: #f3f4f6;
-  --card-bg: #ffffff;
-
-  --text-primary: #0d0f12;
-  --text-secondary: #4b5563;
-  --text-muted: #9ca3af;
-
-  /* Angles vifs et transitions franches pour le panache */
-  --radius: 0px;              /* Brutalisme pur : pas d'arrondis */
-  --transition: 0.1s steps(2); /* Animation saccadée style "rétro/indie" */
-}
-
-/* ================================================================
-   LAYOUT GLOBAL
-   ================================================================ */
-.layout {
+/* ── Layout global ──────────────────────────────────────────────── */
+.itu-layout {
   display: flex;
   min-height: 100vh;
-  background: var(--page-bg);
-  font-family: 'Space Grotesk', system-ui, sans-serif; /* Recommandé pour le look */
+  background: var(--itu-50);
 }
 
-/* ================================================================
-   SIDEBAR (L'élément fort : Sombre, net et tranchant)
-   ================================================================ */
-.sidebar {
+/* ── SIDEBAR ────────────────────────────────────────────────────── */
+.itu-sidebar {
   width: var(--sidebar-w);
   min-height: 100vh;
-  background: var(--sidebar-bg);
-  border-right: 2px solid var(--sidebar-border);
+  background: var(--white);
+  border-right: 1px solid var(--itu-300);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  transition: width var(--transition);
-  overflow: hidden;
-  position: sticky;
+  position: fixed;
   top: 0;
-  height: 100vh;
+  left: 0;
+  bottom: 0;
   z-index: 100;
+  transition: width var(--transition-base);
+  overflow: hidden;
 }
 
-.layout--collapsed .sidebar {
-  width: var(--sidebar-w-collapsed);
-}
+.itu-layout--collapsed .itu-sidebar { width: var(--sidebar-w-collapsed); }
 
 /* Brand */
-.sidebar-brand {
+.itu-sidebar-brand {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 20px;
-  height: var(--topbar-h);
-  border-bottom: 2px solid var(--sidebar-border);
+  padding: 20px 18px;
+  border-bottom: 1px solid var(--itu-100);
   flex-shrink: 0;
-  overflow: hidden;
-  background: #000000;
 }
 
-.sidebar-logo {
-  display: inline-flex;
+.itu-brand-logo {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--itu-500) 0%, #7c3aed 100%);
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
-  background: var(--accent);
-  color: #000; /* Texte noir sur logo orange */
-  font-size: 0.9rem;
-  font-weight: 900;
-  border-radius: var(--radius);
-  flex-shrink: 0;
-  transform: rotate(-3deg); /* Le détail stylistique */
+  color: #fff;
+  font-size: 1rem;
+  box-shadow: 0 4px 12px rgba(67, 97, 238, 0.35);
 }
 
-.sidebar-brand-name {
-  font-size: 1.1rem;
-  font-weight: 800;
-  color: #ffffff;
+.itu-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.itu-brand-name {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
   white-space: nowrap;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.2px;
+}
+
+.itu-brand-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--itu-500);
   text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
 }
 
 /* Nav */
-.sidebar-nav {
+.itu-sidebar-nav {
   flex: 1;
-  padding: 20px 0;
   overflow-y: auto;
   overflow-x: hidden;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.nav-section {
-  margin-bottom: 16px;
+.itu-nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 6px;
 }
 
-.nav-section-label {
-  display: block;
-  padding: 0 20px 8px;
-  font-size: 0.7rem;
-  font-weight: 800;
+.itu-nav-section-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--color-gray-400);
   text-transform: uppercase;
-  letter-spacing: 0.15em;
-  color: #4b5563;
+  letter-spacing: 0.1em;
+  padding: 10px 10px 4px;
   white-space: nowrap;
 }
 
-.nav-item {
+/* Nav item base */
+.itu-nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
-  margin: 2px 0; /* Aligné sur les bords pour un look bloc */
-  border-radius: var(--radius);
-  color: var(--sidebar-text);
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-600);
   text-decoration: none;
-  font-size: 0.9rem;
-  font-weight: 600;
   cursor: pointer;
-  transition: all var(--transition);
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
   overflow: hidden;
-  border-left: 4px solid transparent;
 }
 
-.nav-item:not(.nav-item--disabled):hover {
-  background: #161920;
-  color: var(--sidebar-text-hover);
-  border-left-color: var(--sidebar-text-hover);
+.itu-nav-item:hover {
+  background: var(--itu-100);
+  color: var(--color-gray-900);
 }
 
-.nav-item--active {
-  background: var(--sidebar-active-bg) !important;
-  color: var(--sidebar-active-text) !important;
+.itu-nav-item--active {
+  background: var(--color-primary-50) !important;
+  color: var(--itu-500) !important;
+  font-weight: var(--font-weight-semibold);
+}
+
+.itu-nav-item--active .itu-nav-icon {
+  color: var(--itu-500);
+}
+
+.itu-nav-item--disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.itu-nav-item--danger { color: #e53e3e; }
+.itu-nav-item--danger:hover { background: #fff5f5; color: #c53030; }
+
+.itu-nav-icon {
+  width: 17px;
+  text-align: center;
+  font-size: 0.88rem;
+  flex-shrink: 0;
+  color: var(--color-gray-400);
+  transition: color var(--transition-fast);
+}
+.itu-nav-item:hover .itu-nav-icon { color: var(--color-gray-700); }
+
+.itu-nav-label { flex: 1; }
+
+.itu-nav-soon {
+  font-size: 0.58rem;
   font-weight: 700;
-  border-left-color: var(--accent) !important;
-}
-
-.nav-item--active .nav-item-icon {
-  color: var(--accent);
-}
-
-.nav-item--disabled {
-  opacity: 0.25;
-  cursor: default;
-}
-
-.nav-item-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-}
-
-.nav-item-label {
-  flex: 1;
-}
-
-.nav-badge-soon {
-  font-size: 0.6rem;
-  font-weight: 900;
+  background: var(--itu-200);
+  color: var(--itu-500);
+  border-radius: 999px;
+  padding: 2px 7px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  background: var(--accent);
-  color: #000000;
-  padding: 2px 6px;
-  border-radius: var(--radius);
+}
+
+/* Chevron */
+.itu-chevron {
+  font-size: 0.65rem;
+  color: var(--color-gray-400);
+  transition: transform var(--transition-base);
   flex-shrink: 0;
 }
+.itu-chevron--open { transform: rotate(90deg); }
 
-/* ── Sous-menu (Graphique & Linéaire) ─────────────────────────────────── */
-.nav-group {
+/* Submenu */
+.itu-nav-submenu {
   display: flex;
   flex-direction: column;
+  gap: 1px;
+  padding: 2px 0 4px 28px;
+  animation: slide-up 0.18s ease;
 }
 
-.nav-item--parent {
-  width: 100%;
-  background: none;
-  border: none;
-  text-align: left;
-}
-
-.nav-submenu {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  border-left: none;
-  padding-left: 0;
-  background: #11141a;
-}
-
-.nav-subitem {
+.itu-nav-subitem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 20px 10px 36px;
-  color: var(--sidebar-text);
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.79rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-500);
   text-decoration: none;
-  font-size: 0.85rem;
-  font-weight: 600;
-  transition: all var(--transition);
+  transition: background var(--transition-fast), color var(--transition-fast);
   white-space: nowrap;
 }
-
-.nav-subitem:hover {
-  background: #161920;
-  color: #ffffff;
+.itu-nav-subitem:hover {
+  background: var(--itu-100);
+  color: var(--color-gray-900);
+}
+.itu-nav-subitem--active {
+  color: var(--itu-500);
+  font-weight: var(--font-weight-semibold);
 }
 
-.nav-subitem--active {
-  background: #1e222b;
-  color: var(--accent);
-  font-weight: 700;
+.itu-subitem-dot {
+  width: 5px;
+  height: 5px;
+  min-width: 5px;
+  border-radius: 50%;
+  background: var(--itu-300);
+  transition: background var(--transition-fast);
 }
-
-.nav-subitem-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius); /* Carré si radius = 0 */
-  background: currentColor;
-  flex-shrink: 0;
-}
+.itu-nav-subitem--active .itu-subitem-dot { background: var(--itu-500); }
 
 /* Footer */
-.sidebar-footer {
-  border-top: 2px solid var(--sidebar-border);
-  padding: 16px;
+.itu-sidebar-footer {
+  border-top: 1px solid var(--itu-100);
+  padding: 12px 10px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 6px;
   flex-shrink: 0;
-  background: #000000;
 }
 
-.sidebar-user {
+.itu-sidebar-user {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 0;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
-.sidebar-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: #000000;
-  font-size: 0.9rem;
-  font-weight: 900;
+.itu-user-avatar {
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--itu-500) 0%, #7c3aed 100%);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  border: 1px solid #000;
 }
 
-.sidebar-user-info {
+.itu-user-info {
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  gap: 2px;
+  overflow: hidden;
 }
 
-.sidebar-user-email {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #ffffff;
+.itu-user-email {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-gray-700);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 160px;
 }
 
-.sidebar-user-role {
-  font-size: 0.75rem;
-  color: var(--accent);
-  text-transform: uppercase;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-
-.sidebar-logout-btn {
+.itu-user-role {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 10px;
-  background: transparent;
-  border: 2px solid #ff4444;
-  border-radius: var(--radius);
-  color: #ff4444;
-  font-size: 0.85rem;
-  font-weight: 700;
+  gap: 5px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--color-gray-400);
   text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.itu-role-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  animation: pulse-dot 2.5s ease-in-out infinite;
+}
+
+.itu-logout-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-gray-500);
+  background: none;
+  border: none;
   cursor: pointer;
   width: 100%;
-  transition: all var(--transition);
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
 }
-
-.sidebar-logout-btn:hover {
-  background: #ff4444;
-  color: #000000;
+.itu-logout-btn:hover {
+  background: #fff5f5;
+  color: #e53e3e;
 }
+.itu-logout-btn i { width: 17px; text-align: center; font-size: 0.85rem; }
 
-/* ================================================================
-   LAYOUT BODY
-   ================================================================ */
-.layout-body {
-  flex: 1;
+/* ── MAIN BODY ──────────────────────────────────────────────────── */
+.itu-layout-body {
+  margin-left: var(--sidebar-w);
   display: flex;
   flex-direction: column;
-  min-width: 0;
+  min-height: 100vh;
+  flex: 1;
+  transition: margin-left var(--transition-base);
 }
+.itu-layout--collapsed .itu-layout-body { margin-left: var(--sidebar-w-collapsed); }
 
-/* ================================================================
-   TOPBAR (L'élément clair et percutant)
-   ================================================================ */
-.topbar {
-  height: var(--topbar-h);
-  background: var(--topbar-bg);
-  border-bottom: 2px solid var(--topbar-border);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 32px;
+/* ── TOPBAR ─────────────────────────────────────────────────────── */
+.itu-topbar {
   position: sticky;
   top: 0;
-  z-index: 50;
-  flex-shrink: 0;
-}
-
-.topbar-toggle {
+  z-index: 90;
+  height: var(--topbar-h);
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--itu-300);
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  background: #ffffff;
-  border: 2px solid var(--topbar-border);
-  border-radius: var(--radius);
-  color: var(--text-primary);
-  cursor: pointer;
-  transition: all var(--transition);
-}
-
-.topbar-toggle:hover {
-  background: var(--accent);
-  color: #000000;
-  transform: translate(-2px, -2px);
-  box-shadow: 2px 2px 0px #000000;
-}
-
-.topbar-title {
-  font-size: 1.25rem;
-  font-weight: 900;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: -0.5px;
-  margin: 0;
-  flex: 1;
-}
-
-.topbar-right {
-  display: flex;
-  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
   gap: 16px;
 }
 
-.topbar-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius);
-  background: var(--text-primary);
-  color: #ffffff;
-  font-size: 0.85rem;
-  font-weight: 800;
+.itu-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.itu-topbar-toggle {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: var(--itu-100);
+  border: 1px solid var(--itu-300);
+  color: var(--color-gray-600);
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--topbar-border);
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+}
+.itu-topbar-toggle:hover {
+  background: var(--itu-200);
+  color: var(--color-gray-900);
 }
 
-/* ================================================================
-   MAIN CONTENT AREA
-   ================================================================ */
-.layout-content {
+.itu-topbar-title-wrap { display: flex; align-items: center; }
+.itu-topbar-title {
+  margin: 0;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--color-gray-900);
+  letter-spacing: -0.2px;
+}
+
+.itu-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.itu-topbar-icon-btn {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: none;
+  border: 1px solid var(--itu-300);
+  color: var(--color-gray-500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+.itu-topbar-icon-btn:hover {
+  background: var(--itu-100);
+  color: var(--color-gray-900);
+  border-color: var(--itu-400);
+}
+
+.itu-notif-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--itu-500);
+  border: 1.5px solid #fff;
+}
+
+.itu-topbar-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--itu-500) 0%, #7c3aed 100%);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(67,97,238,0.3);
+}
+
+/* ── PAGE CONTENT ───────────────────────────────────────────────── */
+.itu-layout-content {
   flex: 1;
-  padding: 40px;
+  padding: 28px 28px 48px;
+  animation: slide-up 0.22s ease;
 }
 
-/* ================================================================
-   RESPONSIVE
-   ================================================================ */
-@media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    left: 0;
-    top: 0;
-    height: 100vh;
-    z-index: 200;
-    box-shadow: 8px 0 0px rgba(0, 0, 0, 0.15); /* Ombre brute et plate */
-    border-right: 3px solid var(--accent);
-  }
-
-  .layout-content {
-    padding: 24px 16px;
-  }
-}
+/* ── Collapsed helpers ──────────────────────────────────────────── */
+.itu-layout--collapsed .itu-nav-section-label { opacity: 0; height: 0; padding: 0; margin: 0; overflow: hidden; }
+.itu-layout--collapsed .itu-nav-label         { display: none; }
+.itu-layout--collapsed .itu-nav-soon          { display: none; }
+.itu-layout--collapsed .itu-nav-submenu       { display: none; }
+.itu-layout--collapsed .itu-chevron           { display: none; }
+.itu-layout--collapsed .itu-brand-text        { display: none; }
+.itu-layout--collapsed .itu-user-info         { display: none; }
+.itu-layout--collapsed .itu-logout-btn span   { display: none; }
+.itu-layout--collapsed .itu-sidebar-footer    { align-items: center; }
+.itu-layout--collapsed .itu-nav-item          { justify-content: center; padding: 10px; }
+.itu-layout--collapsed .itu-logout-btn        { justify-content: center; padding: 10px; }
+.itu-layout--collapsed .itu-nav-icon          { width: auto; }

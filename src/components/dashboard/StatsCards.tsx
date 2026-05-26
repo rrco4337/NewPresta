@@ -8,107 +8,167 @@ interface StatsCardsProps {
   cancelledTotal?: number;
 }
 
-const IconOrders = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
-    <line x1="3" y1="6" x2="21" y2="6"/>
-    <path d="M16 10a4 4 0 01-8 0"/>
-  </svg>
-);
+const cardStyle = (accent: string, bg: string): React.CSSProperties => ({
+  background: '#fff',
+  border: '1px solid #d0d7e1',
+  borderRadius: '16px',
+  padding: '22px 24px',
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '16px',
+  boxShadow: '0 2px 8px rgba(15,22,40,0.06)',
+  transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+  cursor: 'default',
+  position: 'relative',
+  overflow: 'hidden',
+});
 
-const IconRevenue = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="12" y1="1" x2="12" y2="23"/>
-    <path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/>
-  </svg>
-);
+const iconStyle = (bg: string, color: string): React.CSSProperties => ({
+  width: '48px',
+  height: '48px',
+  borderRadius: '12px',
+  background: bg,
+  color: color,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '1.1rem',
+  flexShrink: 0,
+});
 
-const IconAvg = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-    <line x1="18" y1="20" x2="18" y2="10"/>
-    <line x1="12" y1="20" x2="12" y2="4"/>
-    <line x1="6" y1="20" x2="6" y2="14"/>
-    <line x1="2" y1="20" x2="22" y2="20"/>
-  </svg>
-);
-
-export function StatsCards({ totalOrders, totalRevenue, averageOrderValue, cancelledOrders = 0, cancelledTotal = 0 }: StatsCardsProps) {
+export function StatsCards({ totalOrders, totalRevenue, averageOrderValue, cancelledOrders = 0 }: StatsCardsProps) {
   const activeOrders = totalOrders - cancelledOrders;
-  
-  // Debug: Afficher dans la console
-  console.log('StatsCards - cancelledOrders:', cancelledOrders);
-  console.log('StatsCards - totalOrders:', totalOrders);
-  console.log('StatsCards - cancelledTotal:', cancelledTotal);
-  
-  // Styles inline de secours
-  const subvalueStyle = {
-    display: 'flex',
-    gap: '8px',
-    fontSize: '0.75rem',
-    marginTop: '4px',
-    flexDirection: 'column' as const,
-    alignItems: 'flex-start'
-  };
-  
-  const activeStyle = {
-    color: '#10b981',
-    background: 'rgba(16, 185, 129, 0.1)',
-    padding: '2px 6px',
-    borderRadius: '12px',
-    fontSize: '0.7rem'
-  };
-  
-  const cancelledStyle = {
-    color: '#dc3545',
-    background: 'rgba(220, 53, 69, 0.1)',
-    padding: '2px 6px',
-    borderRadius: '12px',
-    fontSize: '0.7rem'
-  };
-  
+
+  const cards = [
+    {
+      icon: 'fa-solid fa-bag-shopping',
+      label: 'Total commandes',
+      value: String(totalOrders),
+      valueType: 'number',
+      iconBg: '#eef1fd', iconColor: '#4361ee',
+      accent: '#4361ee',
+      sub: [
+        { label: `${activeOrders} validées`, color: '#065f46', bg: '#d1fae5', icon: 'fa-solid fa-circle-check' },
+        { label: `${cancelledOrders} annulées`, color: '#9b1c1c', bg: '#fee2e2', icon: 'fa-solid fa-circle-xmark' },
+      ],
+      trend: '+12%',
+      trendUp: true,
+    },
+    {
+      icon: 'fa-solid fa-arrow-trend-up',
+      label: "Chiffre d'affaires",
+      value: formatCurrency(totalRevenue),
+      valueType: 'currency',
+      iconBg: '#d1fae5', iconColor: '#059669',
+      accent: '#059669',
+      sub: [],
+      trend: '+8.3%',
+      trendUp: true,
+    },
+    {
+      icon: 'fa-solid fa-chart-pie',
+      label: 'Panier moyen',
+      value: formatCurrency(averageOrderValue),
+      valueType: 'currency',
+      iconBg: '#ede9fe', iconColor: '#7c3aed',
+      accent: '#7c3aed',
+      sub: [],
+      trend: '-2.1%',
+      trendUp: false,
+    },
+    {
+      icon: 'fa-solid fa-triangle-exclamation',
+      label: 'Commandes annulées',
+      value: String(cancelledOrders),
+      valueType: 'number',
+      iconBg: '#fee2e2', iconColor: '#dc2626',
+      accent: '#dc2626',
+      sub: [],
+      trend: cancelledOrders > 0 ? `${Math.round((cancelledOrders / Math.max(totalOrders, 1)) * 100)}%` : '0%',
+      trendUp: false,
+    },
+  ];
+
   return (
-    <div className="db-kpi-grid">
-      <div className="db-kpi-card">
-        <div className="db-kpi-icon db-kpi-icon--indigo">
-          <IconOrders />
-        </div>
-        <div className="db-kpi-body">
-          <div className="db-kpi-label">Commandes</div>
-          <div className="db-kpi-value" style={{ fontSize: '24px', fontWeight: 'bold' }}>
-            {totalOrders}
-            {/* Affichage toujours visible pour tester */}
-            <div style={subvalueStyle}>
-              <span style={activeStyle}>✓ validées: {activeOrders}</span>
-              <span style={cancelledStyle}>✗ annulées: {cancelledOrders}</span>
-          
-            </div>
-          </div>
-        </div>
-      </div>
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+      gap: '16px',
+    }}>
+      {cards.map((card, idx) => (
+        <div
+          key={idx}
+          style={cardStyle(card.accent, card.iconBg)}
+          onMouseEnter={e => {
+            const el = e.currentTarget as HTMLElement;
+            el.style.transform = 'translateY(-3px)';
+            el.style.boxShadow = '0 10px 28px rgba(15,22,40,0.12)';
+          }}
+          onMouseLeave={e => {
+            const el = e.currentTarget as HTMLElement;
+            el.style.transform = '';
+            el.style.boxShadow = '0 2px 8px rgba(15,22,40,0.06)';
+          }}
+        >
+          {/* Accent line */}
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0,
+            height: '3px', background: card.accent,
+            borderRadius: '16px 16px 0 0', opacity: 0.7,
+          }} />
 
-      <div className="db-kpi-card">
-        <div className="db-kpi-icon db-kpi-icon--green">
-          <IconRevenue />
-        </div>
-        <div className="db-kpi-body">
-          <div className="db-kpi-label">Chiffre d'affaires</div>
-          <div className="db-kpi-value db-kpi-value--green" style={{ fontSize: '24px', fontWeight: 'bold' }}>
-            {formatCurrency(totalRevenue)}
+          <div style={iconStyle(card.iconBg, card.iconColor)}>
+            <i className={card.icon}></i>
           </div>
-        </div>
-      </div>
 
-      <div className="db-kpi-card">
-        <div className="db-kpi-icon db-kpi-icon--pink">
-          <IconAvg />
-        </div>
-        <div className="db-kpi-body">
-          <div className="db-kpi-label">Panier moyen</div>
-          <div className="db-kpi-value db-kpi-value--pink" style={{ fontSize: '24px', fontWeight: 'bold' }}>
-            {formatCurrency(averageOrderValue)}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{
+              margin: '0 0 6px',
+              fontSize: '0.68rem', fontWeight: 700, color: '#a3b0c8',
+              textTransform: 'uppercase', letterSpacing: '0.08em',
+            }}>{card.label}</p>
+
+            <p style={{
+              margin: 0,
+              fontFamily: 'Plus Jakarta Sans, sans-serif',
+              fontSize: '1.6rem', fontWeight: 800,
+              color: '#0f1620', lineHeight: 1.1,
+              letterSpacing: '-0.5px',
+            }}>{card.value}</p>
+
+            {card.sub.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+                {card.sub.map((s, si) => (
+                  <span key={si} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '5px',
+                    fontSize: '0.72rem', fontWeight: 600,
+                    color: s.color, background: s.bg,
+                    borderRadius: '999px', padding: '2px 9px', width: 'fit-content',
+                  }}>
+                    <i className={s.icon} style={{ fontSize: '0.65rem' }}></i>
+                    {s.label}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {card.sub.length === 0 && (
+              <div style={{ marginTop: '8px' }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '4px',
+                  fontSize: '0.72rem', fontWeight: 700,
+                  color: card.trendUp ? '#059669' : '#dc2626',
+                  background: card.trendUp ? '#d1fae5' : '#fee2e2',
+                  borderRadius: '999px', padding: '2px 8px',
+                }}>
+                  <i className={card.trendUp ? 'fa-solid fa-arrow-trend-up' : 'fa-solid fa-arrow-trend-down'} style={{ fontSize: '0.65rem' }}></i>
+                  {card.trend}
+                </span>
+              </div>
+            )}
           </div>
         </div>
-      </div>
+      ))}
     </div>
   );
 }

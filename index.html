@@ -1,32 +1,184 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr" data-theme="itu">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Sora:wght@500;600;700&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+    <!-- DaisyUI CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" />
+
+    <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         theme: {
           extend: {
             fontFamily: {
-              display: ['"Sora"', 'sans-serif'],
-              sans: ['"Manrope"', 'sans-serif'],
+              display: ['"Plus Jakarta Sans"', 'sans-serif'],
+              sans:    ['"Inter"', 'sans-serif'],
             },
+            colors: {
+              itu: {
+                50:  '#f2f5fa',
+                100: '#f1f4f9',
+                200: '#ecedf5',
+                300: '#d0d7e1',
+                400: '#a3b0c8',
+                500: '#4361ee',
+                600: '#3654d8',
+                700: '#2c47c0',
+                800: '#1e2f7a',
+                900: '#111a42',
+              }
+            },
+            boxShadow: {
+              'itu-sm': '0 1px 3px rgba(67,97,238,0.08), 0 1px 2px rgba(67,97,238,0.06)',
+              'itu':    '0 4px 16px rgba(67,97,238,0.12), 0 2px 6px rgba(67,97,238,0.08)',
+              'itu-lg': '0 12px 40px rgba(67,97,238,0.18), 0 4px 16px rgba(67,97,238,0.10)',
+            }
           },
         },
       };
     </script>
-    <title>prestashop-app</title>
+
+    <!-- Global ITU styles -->
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      :root {
+        --itu-50:  #f2f5fa;
+        --itu-100: #f1f4f9;
+        --itu-200: #ecedf5;
+        --itu-300: #d0d7e1;
+        --itu-400: #a3b0c8;
+        --itu-500: #4361ee;
+        --itu-600: #3654d8;
+        --itu-700: #2c47c0;
+        --itu-800: #1e2f7a;
+        --itu-900: #111a42;
+        --white:   #ffffff;
+
+        /* Design tokens */
+        --sidebar-w:           260px;
+        --sidebar-w-collapsed: 68px;
+        --topbar-h:            60px;
+        --radius-sm:  6px;
+        --radius-md:  10px;
+        --radius-lg:  14px;
+        --radius-xl:  20px;
+        --radius-2xl: 28px;
+
+        /* Typography */
+        --font-size-xs:   0.72rem;
+        --font-size-sm:   0.8125rem;
+        --font-size-base: 0.9rem;
+        --font-size-lg:   1rem;
+        --font-size-xl:   1.125rem;
+        --font-size-2xl:  1.375rem;
+        --font-size-3xl:  1.75rem;
+        --font-weight-normal:   400;
+        --font-weight-medium:   500;
+        --font-weight-semibold: 600;
+        --font-weight-bold:     700;
+
+        /* Colors mapped to tokens */
+        --color-white:       #ffffff;
+        --color-gray-50:     #f2f5fa;
+        --color-gray-100:    #f1f4f9;
+        --color-gray-200:    #ecedf5;
+        --color-gray-300:    #d0d7e1;
+        --color-gray-400:    #a3b0c8;
+        --color-gray-500:    #6b7a99;
+        --color-gray-600:    #4a5568;
+        --color-gray-700:    #2d3748;
+        --color-gray-800:    #1a202c;
+        --color-gray-900:    #0f1620;
+        --color-primary-50:  #eef1fd;
+        --color-primary-100: #dde4fb;
+        --color-primary-400: #7b94f4;
+        --color-primary-500: #4361ee;
+        --color-primary-600: #3654d8;
+        --color-primary-700: #2c47c0;
+        --color-success-100: #d1fae5;
+        --color-success-600: #059669;
+        --color-danger-100:  #fee2e2;
+        --color-danger-600:  #dc2626;
+        --accent:            #4361ee;
+        --accent-light:      #eef1fd;
+
+        /* Shadows */
+        --shadow-xs: 0 1px 2px rgba(15,22,40,0.06);
+        --shadow-sm: 0 2px 8px rgba(15,22,40,0.08), 0 1px 3px rgba(15,22,40,0.05);
+        --shadow-md: 0 6px 20px rgba(15,22,40,0.10), 0 2px 8px rgba(15,22,40,0.06);
+        --shadow-lg: 0 16px 48px rgba(15,22,40,0.14), 0 4px 16px rgba(15,22,40,0.08);
+
+        /* Transitions */
+        --transition-fast: 0.12s ease;
+        --transition-base: 0.2s ease;
+        --transition-slow: 0.35s ease;
+      }
+
+      html, body { margin: 0; padding: 0; }
+      body {
+        background: var(--itu-50);
+        color: var(--color-gray-900);
+        font-family: 'Inter', system-ui, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        font-size: var(--font-size-base);
+      }
+
+      /* Scrollbar */
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--itu-300); border-radius: 99px; }
+      ::-webkit-scrollbar-thumb:hover { background: var(--itu-400); }
+
+      /* Animations */
+      @keyframes slide-up {
+        from { opacity: 0; transform: translateY(12px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      @keyframes fade-in {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      @keyframes skeleton-loading {
+        0%   { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulse-dot {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50%       { transform: scale(1.4); opacity: 0.6; }
+      }
+
+      /* DaisyUI override: reset conflicting theme colors */
+      [data-theme="itu"] {
+        --p:  67 97 238;
+        --pc: 255 255 255;
+      }
+    </style>
+
+    <title>ITU Project — Gestion Ventes</title>
   </head>
-  <body class="bg-slate-50 text-slate-900 font-sans antialiased">
+  <body>
     <div id="root"></div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

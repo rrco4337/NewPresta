@@ -168,18 +168,15 @@ const FichiersImport: React.FC = () => {
   const [zImg, setZImg] = useState<ZoneState>(INITIAL_ZONE);
   const [formPhase, setFormPhase] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [formError, setFormError] = useState('');
+  const [NoImport, setNoImport] = useState(true);
 
-  const allIdle = [z1, z2, z3, zImg].every((z) => z.phase === 'idle');
-  const hasAllFiles = Boolean(z1.file && z2.file && z3.file && zImg.file);
+  const allIdle = [z1, z2, z3, ...(NoImport ? [] : [zImg])].every((z) => z.phase === 'idle');
+  const hasAllFiles = Boolean(z1.file && z2.file && z3.file && (NoImport || zImg.file));
   const inputsLocked = formPhase === 'running' || !allIdle;
 
-  const [NoImport, setNoImport]= useState(true);
-
-  const HandleImport = (e) => {
+  const HandleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNoImport(e.target.checked);
-  }
-
-  console.log(NoImport);
+  };
 
   // ── Helpers run ───────────────────────────────────────────────────────────────
 
@@ -329,7 +326,9 @@ const FichiersImport: React.FC = () => {
     setFormError('');
 
     if (!hasAllFiles) {
-      setFormError('Veuillez sélectionner les 4 fichiers avant de lancer l\'import.');
+      setFormError(NoImport
+        ? 'Veuillez sélectionner les 3 fichiers CSV avant de lancer l\'import.'
+        : 'Veuillez sélectionner les 3 fichiers CSV et l\'archive ZIP d\'images avant de lancer l\'import.');
       return;
     }
 
